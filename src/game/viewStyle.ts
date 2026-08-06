@@ -23,11 +23,13 @@ export type ViewStyle = {
    * 连接条（纯显示）— light-beam.png，染色/Additive 与光斑一致
    * beamWidth / beamLength：相对格子边长 %
    * beamOffsetX / beamOffsetY：相对手电中心的 design px
+   * beamAlpha：连接独立透明度 0–1
    */
   beamWidth: number;
   beamLength: number;
   beamOffsetX: number;
   beamOffsetY: number;
+  beamAlpha: number;
   /** 透明态鬼 opacity 0–1 */
   ghostTransparentAlpha: number;
   /** 完全显示鬼 opacity 0–1 */
@@ -49,10 +51,11 @@ export const VIEW_STYLE: ViewStyle = {
   glowSide: 0,
   glowOffsetX: 0,
   glowOffsetY: 0,
-  beamWidth: 75,
-  beamLength: 100,
+  beamWidth: 160,
+  beamLength: 150,
   beamOffsetX: 0,
-  beamOffsetY: 0,
+  beamOffsetY: -80,
+  beamAlpha: 0.64,
   ghostTransparentAlpha: 0.35,
   ghostRevealedAlpha: 1,
   snapOutlineAlpha: 0.7,
@@ -85,6 +88,7 @@ export function viewStyleSnapshot(): string {
     `  beamLength: ${v.beamLength},`,
     `  beamOffsetX: ${v.beamOffsetX},`,
     `  beamOffsetY: ${v.beamOffsetY},`,
+    `  beamAlpha: ${v.beamAlpha},`,
     `  ghostTransparentAlpha: ${v.ghostTransparentAlpha},`,
     `  ghostRevealedAlpha: ${v.ghostRevealedAlpha},`,
     `  snapOutlineAlpha: ${v.snapOutlineAlpha},`,

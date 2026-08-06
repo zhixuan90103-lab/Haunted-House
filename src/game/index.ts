@@ -31,11 +31,15 @@ import { applyViewStyleCss } from './viewStyle';
 import {
   applyLayoutToDom,
   buildUiShell,
-  freeBeamSpot,
   renderBoard,
   type DomBoardElements,
-  type FreeGlow,
 } from './view/domBoard';
+import {
+  freeBeamSpot,
+  mountLightFx,
+  type FreeGlow,
+  type LightFxHandle,
+} from './view/lightFx';
 import { mountPropTuner } from './view/propTuner';
 
 export type MountGameOptions = {
@@ -170,7 +174,11 @@ function resolve(rt: Runtime): void {
   rt.ghosts = stepGhosts(rt.ghosts, lit);
 }
 
-function paint(els: DomBoardElements, rt: Runtime): void {
+function paint(
+  els: DomBoardElements,
+  rt: Runtime,
+  lightFx: LightFxHandle,
+): void {
   renderBoard(els, {
     board: rt.board,
     ghosts: rt.ghosts,
@@ -178,14 +186,16 @@ function paint(els: DomBoardElements, rt: Runtime): void {
     tray: rt.tray,
     drag: rt.drag,
     hidePropId: rt.drag?.source === 'board' ? rt.drag.propId : undefined,
-    freeGlows: rt.freeGlows,
   });
+  // 光效独立层：仅拿起手电时画连接+光斑
+  lightFx.paint(rt.drag, rt.freeGlows);
   if (rt.def.title) els.titleEl.textContent = rt.def.title;
 }
 
 export function mountGame(opts: MountGameOptions): GameHandle {
   const { stage, uiRoot, getLayout } = opts;
   const els = buildUiShell(uiRoot);
+  const lightFx = mountLightFx(uiRoot);
 
   let loaded: LoadedLevel = loadLevel(level001 as LevelDef);
   const rt: Runtime = {
@@ -201,18 +211,22 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   applyPropStyleCss(uiRoot);
   applyViewStyleCss(uiRoot);
   applyLayoutToDom(els);
+  lightFx.layout();
+
+  const repaint = () => paint(els, rt, lightFx);
 
   const tuner = mountPropTuner(uiRoot, {
     onChange: () => {
       applyPropStyleCss(uiRoot);
       applyViewStyleCss(uiRoot);
       applyLayoutToDom(els);
-      paint(els, rt);
+      lightFx.layout();
+      repaint();
     },
   });
 
   resolve(rt);
-  paint(els, rt);
+  repaint();
 
   const restart = () => {
     loaded = loadLevel(level001 as LevelDef);
@@ -220,9 +234,10 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.ghosts = loaded.ghosts;
     rt.tray = loaded.tray;
     rt.drag = null;
+    rt.freeGlows = [];
     rt.def = loaded.def;
     resolve(rt);
-    paint(els, rt);
+    repaint();
   };
 
   const detach = attachInput(uiRoot, {
@@ -235,14 +250,14 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     onTrayPick: (type: PropType) => takeFromTray(rt.tray, type),
     onDragMove: () => {
       resolve(rt);
-      paint(els, rt);
+      repaint();
     },
     onDrop: (drag) => {
       if (!drag.cell) {
         if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
         rt.drag = null;
         resolve(rt);
-        paint(els, rt);
+        repaint();
         return;
       }
       const { x, y } = drag.cell;
@@ -258,18 +273,18 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       }
       rt.drag = null;
       resolve(rt);
-      paint(els, rt);
+      repaint();
     },
     onCancelDrag: (drag) => {
       if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
       rt.drag = null;
       resolve(rt);
-      paint(els, rt);
+      repaint();
     },
     onRotate: (x, y) => {
       if (rotatePropAt(rt.board, x, y)) {
         resolve(rt);
-        paint(els, rt);
+        repaint();
       }
     },
   });
@@ -282,6 +297,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     dispose: () => {
       detach();
       tuner.dispose();
+      lightFx.dispose();
       uiRoot.replaceChildren();
       uiRoot.classList.remove('game-ui');
     },

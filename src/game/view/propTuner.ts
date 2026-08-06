@@ -95,11 +95,12 @@ const SLIDERS: SliderDef[] = [
   { group: 'view', key: 'glowSide', label: '光斑侧移(格)', min: -1.5, max: 1.5, step: 0.05 },
   { group: 'view', key: 'glowOffsetX', label: '光斑偏移Xpx', min: -80, max: 80, step: 1 },
   { group: 'view', key: 'glowOffsetY', label: '光斑偏移Ypx', min: -80, max: 80, step: 1 },
-  // —— 表现：连接（纯显示：宽、长、位置）——
+  // —— 表现：连接（纯显示：宽、长、位置、透明度）——
   { group: 'view', key: 'beamWidth', label: '连接宽度%', min: 10, max: 250, step: 5 },
   { group: 'view', key: 'beamLength', label: '连接长度%', min: 10, max: 300, step: 5 },
   { group: 'view', key: 'beamOffsetX', label: '连接位置X', min: -120, max: 120, step: 1 },
   { group: 'view', key: 'beamOffsetY', label: '连接位置Y', min: -120, max: 120, step: 1 },
+  { group: 'view', key: 'beamAlpha', label: '连接透明度', min: 0, max: 1, step: 0.02 },
   { group: 'view', key: 'ghostTransparentAlpha', label: '透明鬼α', min: 0.1, max: 1, step: 0.05 },
   { group: 'view', key: 'ghostRevealedAlpha', label: '显示鬼α', min: 0.3, max: 1, step: 0.05 },
   { group: 'view', key: 'snapOutlineAlpha', label: '吸附描边', min: 0, max: 1, step: 0.05 },
@@ -124,6 +125,7 @@ const FLOAT_KEYS = new Set([
   'glowAlpha',
   'glowForward',
   'glowSide',
+  'beamAlpha',
   'ghostTransparentAlpha',
   'ghostRevealedAlpha',
   'snapOutlineAlpha',

@@ -324,21 +324,34 @@ button:active {
   position: absolute;
   z-index: 2;
   border-radius: 4px;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
   box-shadow: none;
   touch-action: none;
 }
 
-/* 光斑 canvas：在 board-hit 内、格子下层 */
+/**
+ * 扫描光效层（设计约定 · lightFx.ts）
+ * 全 design 画布，无裁切；仅拿起手电时有像素。
+ * plus-lighter = 对背景 Additive；手电关系只走 VIEW_STYLE。
+ */
 .board-light-canvas {
   position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
+  left: 0;
+  top: 0;
+  z-index: 22;
+  width: 390px;
+  height: 844px;
   pointer-events: none;
   display: block;
+  overflow: visible;
+  mix-blend-mode: plus-lighter;
+}
+
+@supports not (mix-blend-mode: plus-lighter) {
+  .board-light-canvas {
+    mix-blend-mode: screen;
+  }
 }
 
 .board-grid {
@@ -348,26 +361,6 @@ button:active {
   pointer-events: none;
   z-index: 1;
   overflow: visible;
-}
-
-/**
- * 连接条：DOM 排在拖动手电之后 → 显示在手电上方
- * 同色黄 + Additive
- */
-.light-link-sprite {
-  position: absolute;
-  pointer-events: none;
-  z-index: 21;
-  object-fit: contain;
-  transform-origin: center center;
-  filter: brightness(1.2) sepia(1) saturate(9) hue-rotate(3deg);
-  mix-blend-mode: plus-lighter;
-}
-
-@supports not (mix-blend-mode: plus-lighter) {
-  .light-link-sprite {
-    mix-blend-mode: screen;
-  }
 }
 
 .cell {
