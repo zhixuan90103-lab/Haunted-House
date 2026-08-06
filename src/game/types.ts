@@ -118,10 +118,12 @@ export type DragGhost = {
   /** 指尖 design（调试/可选） */
   fingerX?: number;
   fingerY?: number;
-  /**
-   * 相对盘上拖动尺寸的尺度（托盘拿起 0.5→1，盘上摘≈1）
-   */
+  /** 平面尺度（手电本体满尺寸） */
   scale?: number;
+  /**
+   * 开灯进度 0→1（光斑整体 / 连接从手电端 scaleX）
+   */
+  openT?: number;
   /** 盘上拖动满尺寸边长 px */
   dragSizePx?: number;
 };

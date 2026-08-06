@@ -185,17 +185,19 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
     }
   }
 
+  // 托盘：按 count 展开为独立槽位，横向平均分布
   els.tray.replaceChildren();
   for (const item of tray) {
-    if (item.count <= 0) continue;
-    const slot = document.createElement('button');
-    slot.type = 'button';
-    slot.className = 'tray-item';
-    slot.dataset.trayType = item.type;
-    slot.setAttribute('aria-label', `${item.type} ×${item.count}`);
-    const spr = propImg(item.type, PROP_STYLE.trayFacing, 'tray-prop');
-    slot.append(spr);
-    els.tray.append(slot);
+    for (let i = 0; i < item.count; i++) {
+      const slot = document.createElement('button');
+      slot.type = 'button';
+      slot.className = 'tray-item';
+      slot.dataset.trayType = item.type;
+      slot.setAttribute('aria-label', `${item.type} ${i + 1}`);
+      const spr = propImg(item.type, PROP_STYLE.trayFacing, 'tray-prop');
+      slot.append(spr);
+      els.tray.append(slot);
+    }
   }
 
   els.dragLayer.replaceChildren();
@@ -211,6 +213,8 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
     free.style.left = `${drag.designX - dragSize / 2}px`;
     free.style.top = `${drag.designY - dragSize / 2}px`;
     free.style.opacity = '1';
+    // 手电本体不参与开灯缩放，瞬间满尺寸
+    free.style.transform = '';
     if (!drag.cell) free.classList.add('drag-invalid');
     else free.classList.add('drag-valid');
     els.dragLayer.append(free);

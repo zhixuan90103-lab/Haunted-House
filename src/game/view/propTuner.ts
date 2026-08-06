@@ -72,6 +72,7 @@ const SLIDERS: SliderDef[] = [
   { group: 'feel', key: 'BOARD_SCALE', label: '盘上尺度', min: 0.6, max: 1.4, step: 0.05 },
   { group: 'feel', key: 'DRAG_SCALE_POP', label: '拿起pop×', min: 0.7, max: 2.0, step: 0.02 },
   { group: 'feel', key: 'SCALE_POP_MS', label: '放大时长ms', min: 0, max: 300, step: 5 },
+  { group: 'feel', key: 'LIGHT_OPEN_MS', label: '开灯时长ms', min: 40, max: 300, step: 5 },
   { group: 'feel', key: 'SMOOTH_TIME', label: '平滑(秒)', min: 0, max: 0.1, step: 0.002 },
   { group: 'feel', key: 'DRAG_LIFT_TRAVEL_CELLS', label: '抬升行程', min: 0.5, max: 8, step: 0.1 },
   { group: 'feel', key: 'DRAG_LIFT_POWER', label: '抬升曲线', min: 0.5, max: 3, step: 0.05 },

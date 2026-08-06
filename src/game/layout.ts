@@ -30,7 +30,7 @@ export const TRAY_LAYOUT: TrayLayout = {
   left: 24,
   top: 640,
   width: 342,
-  height: 100,
+  height: 80,
 };
 
 export const DEFAULT_BOARD_LAYOUT: BoardLayout = { ...BOARD_LAYOUT };

@@ -24,14 +24,17 @@ export type DragSession = {
   cell: number;
   extraLiftCells: number;
   /**
-   * 视觉尺度 0…1+：相对「盘上拖动尺寸」。
-   * 从托盘拿起：TRAY_SCALE → 1；盘上摘：1（或短 pop）
+   * 平面尺度：拿起即满尺寸（手电本体不缩）
    */
   scale: number;
-  /** 放大动画目标 */
   scaleTarget: number;
   scaleFrom: number;
   scaleStartedAt: number;
+  /**
+   * 开灯动画进度 0→1：
+   * 光斑 = 整体 scale；连接 = 沿长度从手电端 scaleX
+   */
+  openT: number;
   /** 盘上拖动目标边长（design px），含 light 比例与 pop */
   dragSizePx: number;
 };
@@ -42,18 +45,18 @@ export type CreateDragSessionOpts = {
   fx: number;
   fy: number;
   cell: number;
-  /** true=从托盘（半尺寸弹到满）；false=盘上摘 */
+  /** 保留字段：曾用于托盘缩放动画，现已取消 */
   fromTray: boolean;
   /** 盘上拖动边长（已算好：cell * boardScale * light * pop） */
   dragSizePx: number;
 };
 
 export function createDragSession(opts: CreateDragSessionOpts): DragSession {
-  const { anchorCx, anchorCy, fx, fy, cell, fromTray, dragSizePx } = opts;
+  const { anchorCx, anchorCy, fx, fy, cell, dragSizePx } = opts;
   const baseCx = anchorCx + FEEL.DRAG_OFFSET_X * cell;
   const baseCy = anchorCy + FEEL.DRAG_OFFSET_Y_MIN * cell;
   const now = performance.now();
-  const scaleFrom = fromTray ? FEEL.TRAY_SCALE : 1;
+  // 手电本体瞬间满尺寸；光效 openT 0→1 快速开灯
   const scaleTarget = FEEL.BOARD_SCALE; // 1.0
   return {
     baseCx,
@@ -73,10 +76,11 @@ export function createDragSession(opts: CreateDragSessionOpts): DragSession {
     snapVisualOnce: true,
     cell,
     extraLiftCells: 0,
-    scale: scaleFrom,
-    scaleFrom,
+    scale: scaleTarget,
+    scaleFrom: scaleTarget,
     scaleTarget,
     scaleStartedAt: now,
+    openT: 0,
     dragSizePx,
   };
 }
@@ -87,12 +91,11 @@ function gainK(): number {
 }
 
 function tickScale(session: DragSession, now: number): void {
-  const ms = Math.max(1, FEEL.SCALE_POP_MS);
+  session.scale = session.scaleTarget;
+  // 开灯进度 0 → 1，ease-out，较快
+  const ms = Math.max(1, FEEL.LIGHT_OPEN_MS);
   const t = Math.min(1, (now - session.scaleStartedAt) / ms);
-  // smoothstep
-  const eased = t * t * (3 - 2 * t);
-  session.scale =
-    session.scaleFrom + (session.scaleTarget - session.scaleFrom) * eased;
+  session.openT = 1 - (1 - t) * (1 - t);
 }
 
 export function samplePointer(session: DragSession, fx: number, fy: number): void {

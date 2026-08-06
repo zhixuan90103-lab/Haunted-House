@@ -73,8 +73,8 @@ function facingAngleRad(facing: number): number {
 }
 
 /**
- * 连接：以「手电中心 + beamOffset」为锚，宽/长为格子%，朝向=facing
- * 贴图补 +90° 对齐轴向（与调参关系一致）
+ * 连接开灯：位置/长度不变，仅宽度 0→满（中心向两侧变宽）。
+ * 锚点 = 手电中心 + beamOffset（与调参一致）。
  */
 function paintBeam(
   ctx: CanvasRenderingContext2D,
@@ -82,37 +82,51 @@ function paintBeam(
   lightY: number,
   facing: number,
   cell: number,
+  openT: number,
 ): void {
   if (!beamImg.complete || beamImg.naturalWidth <= 0) return;
+  const t = Math.max(0, Math.min(1, openT));
+  if (t <= 0.001) return;
 
   const { beamWidth, beamLength, beamOffsetX, beamOffsetY, beamAlpha } =
     VIEW_STYLE;
-  const w = cell * Math.max(0.05, beamWidth / 100);
-  const h = cell * Math.max(0.05, beamLength / 100);
-  if (w < 1 || h < 1) return;
+  // 满宽 × openT；长度固定
+  const thickness = cell * Math.max(0.05, beamWidth / 100) * t;
+  const length = cell * Math.max(0.05, beamLength / 100);
+  if (thickness < 0.5 || length < 1) return;
 
+  // 位置不变（与调参一致）
   const cx = lightX + beamOffsetX;
   const cy = lightY + beamOffsetY;
 
   ctx.save();
   ctx.translate(cx, cy);
+  // 与原先一致：素材 +90° 对齐朝向
   ctx.rotate(facingAngleRad(facing) + Math.PI / 2);
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = Math.max(0, Math.min(1, beamAlpha));
   ctx.filter = LIGHT_FILTER;
-  ctx.drawImage(beamImg, -w / 2, -h / 2, w, h);
+  // 中心锚定：宽变、长/位置不动
+  ctx.drawImage(beamImg, -thickness / 2, -length / 2, thickness, length);
   ctx.restore();
 }
 
+/**
+ * 光斑开灯：整体 scale 0→1（中心缩放）
+ */
 function paintGlow(
   ctx: CanvasRenderingContext2D,
   freeGlows: FreeGlow[],
   cell: number,
+  openT: number,
 ): void {
   if (!glowImg.complete || glowImg.naturalWidth <= 0) return;
   if (freeGlows.length === 0) return;
+  const t = Math.max(0, Math.min(1, openT));
+  if (t <= 0.001) return;
 
-  const glowPx = cell * Math.max(0.4, VIEW_STYLE.glowSize / 100);
+  const base = cell * Math.max(0.4, VIEW_STYLE.glowSize / 100);
+  const glowPx = base * t;
   const alpha = Math.max(0, Math.min(1, VIEW_STYLE.glowAlpha));
 
   ctx.globalCompositeOperation = 'source-over';
@@ -169,9 +183,10 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
     }
 
     const cell = cellSize();
-    // 顺序：先连接后光斑（末端叠在连接上）
-    paintBeam(ctx, drag.designX, drag.designY, drag.facing, cell);
-    paintGlow(ctx, freeGlows, cell);
+    const openT = drag.openT ?? 1;
+    // 连接：从手电端 scaleX；光斑：整体 scale
+    paintBeam(ctx, drag.designX, drag.designY, drag.facing, cell, openT);
+    paintGlow(ctx, freeGlows, cell, openT);
 
     ctx.filter = 'none';
     ctx.globalAlpha = 1;

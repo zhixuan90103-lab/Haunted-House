@@ -11,7 +11,7 @@
     { "id": "g2", "x": 1, "y": 4 }
   ],
   "tray": [
-    { "type": "light", "count": 1 }
+    { "type": "light", "count": 3 }
   ],
   "reference": "light at (0,1) facing E lights g1; light at (1,0) facing S toward g2 (path clear of wall at 2,2)."
 }

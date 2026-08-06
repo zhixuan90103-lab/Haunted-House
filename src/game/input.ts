@@ -68,6 +68,7 @@ function syncGhostFromSession(
   ghost.fingerX = session.lastFx;
   ghost.fingerY = session.lastFy;
   ghost.scale = session.scale;
+  ghost.openT = session.openT;
   ghost.dragSizePx = session.dragSizePx;
 
   // 吸附用视觉中心（块中心），不是指尖

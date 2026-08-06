@@ -16,6 +16,8 @@ export type FeelConfig = {
   BOARD_SCALE: number;
   DRAG_SCALE_POP: number;
   SCALE_POP_MS: number;
+  /** 拿起手电：Y 轴开灯动画时长（ms），从 0→满尺寸 */
+  LIGHT_OPEN_MS: number;
 };
 
 export const FEEL: FeelConfig = {
@@ -27,10 +29,11 @@ export const FEEL: FeelConfig = {
   DRAG_LIFT_POWER: 1.0,
   POINTER_GAIN_K: 1.6,
   SMOOTH_TIME: 0.012,
-  TRAY_SCALE: 0.5,
+  TRAY_SCALE: 1.2,
   BOARD_SCALE: 1.0,
   DRAG_SCALE_POP: 1.0,
   SCALE_POP_MS: 90,
+  LIGHT_OPEN_MS: 100,
 };
 
 export const DEFAULT_FEEL: FeelConfig = { ...FEEL };
@@ -62,6 +65,7 @@ export function feelSnapshot(): string {
     `  BOARD_SCALE: ${f.BOARD_SCALE},`,
     `  DRAG_SCALE_POP: ${f.DRAG_SCALE_POP},`,
     `  SCALE_POP_MS: ${f.SCALE_POP_MS},`,
+    `  LIGHT_OPEN_MS: ${f.LIGHT_OPEN_MS},`,
     `  SMOOTH_TIME: ${f.SMOOTH_TIME},`,
   ].join('\n');
 }

@@ -493,7 +493,7 @@ button:active {
   touch-action: none;
 }
 
-/* Tray chrome off — only prop sprites visible */
+/* Tray chrome off — only prop sprites visible；槽位平均分布 */
 .game-tray.game-tray-bare {
   background: transparent;
   border: 0;
@@ -501,6 +501,10 @@ button:active {
   backdrop-filter: none;
   padding: 0;
   border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 0;
 }
 
 .game-tray.game-tray-bare .tray-item {
@@ -511,6 +515,7 @@ button:active {
   width: var(--prop-tray-size, 56px);
   height: var(--prop-tray-size, 56px);
   padding: 0;
+  flex: 0 0 auto;
 }
 
 .game-tray.game-tray-bare .tray-item .prop-sprite {
