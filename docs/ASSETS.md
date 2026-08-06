@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| 版本 | **v0.2** |
+| 版本 | **v0.3** |
 | 原则 | **一物一图**；朝向用代码旋转，不拆四向贴图 |
 | 实现根路径 | Vite：`public/` → 运行时 `/文件名` 或 `./文件名`（`base: './'`） |
 | 备份 | `assets/` 与 `public/` 同步关键定稿 |
@@ -31,10 +31,10 @@
 | 用途 | 主文件（public） | 状态 | 说明 |
 |------|------------------|------|------|
 | 棋盘背景 | **`board-bg.jpg`** | **定稿** | 空 5×5 木格，无 UI、无鬼、无道具 |
-| 鬼魂·完全显示 | **`ghost.png`** | **定稿** | 玩家修改版；单独、实体、表情清晰；紫底 |
-| 光源 light | **`prop-light.png`** | **定稿** | 玩家修改版；黄身/青圈/橙钮；**一物一图** |
-| 照射光斑 | **`light-glow.png`** | **定稿** | 末端圆光斑 |
-| 光束连接 | **`light-beam.png`** | **定稿** | 手电→光斑连接条；**独立图**；与光斑同色染色 + Additive |
+| 鬼魂·完全显示 | **`ghost.png`** | **定稿** | Q 版透明底；入场/待机/透明共用；尺寸=格边×`ghostSize%` |
+| 光源 light | **`prop-light.png`** | **定稿** | 黄身手电；**一物一图**；朝向代码旋转 |
+| 照射光斑 | **`light-glow.png`** | **定稿** | 扫描态末端圆光斑；Additive 染色 |
+| 光束连接 | **`light-beam.png`** | **定稿** | 手电→光斑连接；独立图；Additive |
 
 ### 别名（与定稿同内容或兼容）
 
@@ -45,13 +45,17 @@
 | `assets/ghost-ref.png` / `assets/prop-light-ref.png` | 定稿参考备份 |
 | `assets/board-bg.jpg` | 背景备份 |
 
-**第 1 步实现（基础操作 + 找鬼）最少依赖：**
+**Step 1 最少依赖：**
 
 ```
 public/board-bg.jpg
 public/ghost.png
 public/prop-light.png
+public/light-glow.png
+public/light-beam.png
 ```
+
+动画与朝向：**一物一图**；入场/待机为 CSS/transform，不拆帧序列。
 
 ---
 
@@ -86,8 +90,10 @@ public/prop-light.png
 // 路径注意 Capacitor：base './'
 const ASSETS = {
   boardBg: './board-bg.jpg',
-  ghostRevealed: './ghost.png',
+  ghost: './ghost.png',
   light: './prop-light.png',
+  lightGlow: './light-glow.png',
+  lightBeam: './light-beam.png',
 } as const
 ```
 
@@ -99,3 +105,4 @@ const ASSETS = {
 |------|------|
 | v0.1 | 一物一图初版 |
 | v0.2 | 定稿：board-bg / ghost / prop-light；草稿道具分离；实现最小集 |
+| v0.3 | Step1 最小集含 glow/beam；鬼图说明对齐现网 |

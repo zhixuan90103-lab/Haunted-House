@@ -10,23 +10,22 @@
 ## 2. 目录
 
 ```
-portrait-webgpu-base/
+NewProject_Puzzle/
 ├── AGENTS.md
 ├── README.md
-├── docs/
+├── docs/                   # PRODUCT · OPTICS · INTERACTION · PROGRESS …
+├── public/                 # 运行时贴图（ghost / prop-light / light-* / board-bg）
 ├── index.html
 ├── vite.config.ts          # base: './' · port 5190
-├── capacitor.config.ts     # contentInset never · scrollEnabled false
+├── capacitor.config.ts
 ├── src/
-│   ├── main.ts             # demo（可替换）
+│   ├── main.ts             # boot → mountGame
 │   ├── create-renderer.ts
 │   ├── style.css
-│   ├── adapt/
-│   │   ├── design.ts       # 390×844 · layout · clientToDesign
-│   │   ├── devicePreview.ts
-│   │   └── safeArea.ts
-│   └── utils/haptics.ts
-├── plugins/native-haptics/ # Swift 真源
+│   ├── adapt/              # 390×844 · devicePreview · safeArea
+│   ├── utils/haptics.ts
+│   └── game/               # 玩法（见 PROGRESS §3）
+├── plugins/native-haptics/
 └── scripts/bootstrap-ios.mjs
 ```
 
@@ -116,9 +115,14 @@ npm run cap:sync
 4. pbxproj 优先 bootstrap，少手改  
 5. `dist` / `ios/.../public` 是产物  
 6. appId `com.example.*` 仅脚手架  
+7. **鬼节点**挂稳定层（`board-ghost-layer`），勿每帧 `replaceChildren` 掐断 CSS 动画  
+8. **鬼尺寸**用 `cellSize × %`，勿把 `%` 相对整层棋盘  
+9. **拖灯**时禁止 dwell rAF 与 input rAF 同时 full-repaint（会抖）  
+10. 左右描述用 **图片左/右**，不用角色左右  
 
 ## 10. 变更
 
 | 日期 | 说明 |
 |------|------|
 | 2026-08-03 | 初版：合并 niantu + shell 为 portrait-webgpu-base |
+| 2026-08-06 | 玩法 Step1：光效层、鬼层池、dwell、双 rAF 修复；文档 PROGRESS |

@@ -219,9 +219,10 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   const repaint = () => paint(els, rt, lightFx);
 
   /**
-   * 首次出场 dwell：手电停在格上不动时 pointer 不再 move，
-   * 用 rAF 推进 litSince → 满 1s 才 Revealed。
-   * 离开格子由 stepGhost 清 litSince。
+   * 首次出场 dwell 计时：
+   * - 拖着手电时：input 的 rAF 每帧 onDragMove → resolve，已能推进 litSince，
+   *   禁止再开 dwell rAF，否则双循环 double-paint，光斑换格会抖（像震动）。
+   * - 仅放置后的固定灯在蓄光：才用 dwell rAF 推进时间。
    */
   let dwellRaf = 0;
   const stopDwellLoop = () => {
@@ -234,20 +235,23 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     if (dwellRaf) return;
     const tick = (now: number) => {
       dwellRaf = 0;
+      // 拖灯中改由 input rAF 负责，本循环让出
+      if (rt.drag?.type === 'light') return;
       resolve(rt, now);
       repaint();
-      if (rt.drag?.type === 'light' || anyGhostCharging(rt.ghosts)) {
+      if (anyGhostCharging(rt.ghosts)) {
         dwellRaf = requestAnimationFrame(tick);
       }
     };
     dwellRaf = requestAnimationFrame(tick);
   };
   const afterResolve = () => {
-    if (rt.drag?.type === 'light' || anyGhostCharging(rt.ghosts)) {
-      ensureDwellLoop();
-    } else {
+    if (rt.drag?.type === 'light') {
       stopDwellLoop();
+      return;
     }
+    if (anyGhostCharging(rt.ghosts)) ensureDwellLoop();
+    else stopDwellLoop();
   };
 
   const tuner = mountPropTuner(uiRoot, {
@@ -283,7 +287,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     getBoard: () => rt.board,
     setDrag: (d) => {
       rt.drag = d;
-      if (d?.type === 'light') ensureDwellLoop();
+      // 拖灯：停掉 dwell，避免与 input rAF 双开
+      if (d?.type === 'light') stopDwellLoop();
     },
     getLayout,
     getStage: () => stage,

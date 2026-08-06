@@ -2,16 +2,17 @@
 
 | | |
 |--|--|
-| 版本 | **v0.3** |
+| 版本 | **v0.4** |
 | 规格 | `PRODUCT` · `OPTICS_SPEC` · `INTERACTION_SPEC` · `IMPLEMENTATION_PLAN` |
-| 审核 | NotebookLM · Haunted House 审稿（2026-08-06）已吸收建议 |
+| 进度总览 | **`docs/PROGRESS.md`** |
 | 状态约定 | `[ ]` 未做 · `[~]` 进行中 · `[x]` 完成 · `[-]` 取消/推迟 |
 
 **Done 定义（Slice 0）：**  
 `npm run dev` 可：拖灯扫鬼 → 摆镜折光 → 两鬼全显示 → 松手锁盘 → 拍照过关 / 返回 / 重开。
 
-**Step 1 Done（本步，2026-08-06）：**  
-托盘拖灯 → 5×5 放置/再拿起 → 点旋四向 → 直线 lit → 鬼 Hidden→Revealed→Transparent；`npm run build` 通过。
+**Step 1 Done（2026-08-06，含表现迭代）：**  
+托盘拖灯×3 → 扫描光斑+连接 → 放置直线 lit → 鬼 **连续照 1s 出场** → 入场/待机/透明；鬼独立层；`npm run build` 通过。  
+明细：`PROGRESS.md`。
 
 ---
 
@@ -39,7 +40,8 @@
   - get/set、canPlace（排除墙与**鬼格**）、ignore 自己挪动  
   - locked 字段支持；完整 locked 场景待会话层
 - [x] **A5** `src/game/ghosts.ts` · `stepGhosts`  
-  - Hidden / Revealed / Transparent / everLit；Caught 仅拍照写（未接）
+  - Hidden / Revealed / Transparent / everLit / litSince  
+  - **首次出场 dwell 1s**（`GHOST_REVEAL_DWELL_MS`）；Caught 仅拍照写（未接）
 - [x] **A6** `src/game/level.ts`  
   - 加载 LevelDef、校验鬼不在墙上  
   - lockedProps / light→lights 路径已具备
@@ -64,7 +66,10 @@
   - canvas `pointer-events: none`  
   - 棋盘矩形用绝对 design 坐标；HUD 用 safe-top
 - [x] **C3** `src/game/view/domBoard.ts`  
-  - 绘制格、墙、鬼三态、道具、lit 高亮
+  - 格/墙/道具；**board-ghost-layer** 鬼池；lit/snap
+- [x] **C3b** `lightFx.ts` · 扫描 beam+glow Additive  
+- [x] **C3c** `ghostIdle.ts` · 入场 CSS + 待机 bob/S&S  
+- [x] **C3d** `viewStyle` / `propStyle` / propTuner 调参  
 - [~] **C4** `src/game/input.ts`  
   - 托盘直接拖出 · 盘上拖移 · 点旋（阈值 8px）  
   - DragGhost + 松手放置/取消；canPlace（墙/鬼格不可放）  
@@ -82,8 +87,10 @@
 
 ### Slice 0 · 手测清单
 
-- [x] 拖灯在盘上移动，鬼：隐藏→显示→透明
-- [x] 灯放下后有直线 lit
+- [x] 拖灯：光斑跟手；不足 1s 离格鬼不出现
+- [x] 连续照满 1s：入场 → 待机；离光透明；再照立刻显示
+- [x] 灯放下后有直线 lit；多灯托盘
+- [x] 拖灯过格无 double-paint 抖
 - [ ] 镜放入、旋转后光 90° 折（Step 2）
 - [ ] 两鬼同时显示 → **松手后** 进相机（拖动中不进）
 - [ ] 拍照 → 过关
@@ -116,9 +123,9 @@
 
 ## Slice 3 · 手感与表现
 
-- [ ] **S3.1** 震动：拖灯近鬼档位 + throttle（haptics）
-- [ ] **S3.2** lit / 光束表现增强（可选线段）
-- [ ] **S3.3** 鬼/道具/房间基础美术皮
+- [ ] **S3.1** 震动：拖灯近鬼档位 + throttle（haptics）；**勿默认「光斑每换格震」**
+- [x] **S3.2** 扫描 beam/glow Additive（Step1 已做；放置光束可选增强）
+- [x] **S3.3** 鬼贴图 + 入场/待机（Step1）；道具/房间可继续皮
 - [ ] **S3.4** 音效（可选）
 - [ ] **S3.5** 安全区下托盘/HUD 不挡操作
 
@@ -147,7 +154,10 @@
 
 | Slice | 进度 |
 |-------|------|
-| 0 最小可玩 | ~55%（Step 1：拖灯找鬼；缺镜/相机/重开 UI） |
+| 0 最小可玩 | ~65%（Step1 拖灯找鬼+光效+鬼动画+dwell；缺镜/相机/重开） |
+| 1 四件齐 | 算法有、UI 未接 |
+| 2 多关 | 未开始 |
+| 3 手感表现 | 光效/鬼皮部分完成；震动/音效未做 |
 | 1 四件齐 | 0%（optics 分支预留） |
 | 2 多关 | 0% |
 | 3 表现 | 0% |

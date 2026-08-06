@@ -2,8 +2,8 @@
 
 | | |
 |--|--|
-| 版本 | **v0.1** |
-| 状态 | **第 2、3 轮检索冻结** |
+| 版本 | **v0.2** |
+| 状态 | 冻结基线 + Step1 表现扩展（扫描光效 / 鬼层） |
 | 依赖 | `PRODUCT.md`、`OPTICS_SPEC.md`、`adapt/design.ts` |
 
 ---
@@ -237,47 +237,62 @@ function restart():
 
 ---
 
-## R11 · 光路表现（Slice 0 最小）
+## R11 · 光路表现（Slice 0 / Step 1）
 
 | 方案 | 选用 |
 |------|------|
-| A. 仅亮格色块 | **Slice 0 采用** |
-| B. 光束线段 mesh | Slice 1+ 可选 |
+| A. 仅亮格色块 | 逻辑 lit 可有；当前格高亮可透明（不挡背景） |
+| B. 扫描光效贴图 | **Step 1 采用（拿起手电时）** |
 | C. 全屏后处理光 | 不做 |
 
-- 逻辑 `lit` → view 每格 emissive/颜色。  
-- 鬼：Hidden 不渲染或全透明不可见；Revealed 实心；Transparent 半透；Caught 特殊。  
-- 道具：简单几何或 emoji/图标纹理即可。
+### R11.1 扫描态（拖着 light）
 
-**渲染路径：** OrthographicCamera 俯视，xy 平面铺格；**或** 纯 DOM/CSS grid 画盘（更快出片）。  
-**Slice 0 决策：DOM/CSS 棋盘 + ui-root 交互优先**；Three 可只作背景氛围或暂时不用盘面。  
-（底座 WebGPU 保留；玩法不阻塞在 3D。）
+- **逻辑 lit：** 光斑中心（design 连续点）→ `designToCell` → 至多 1 格；可与已放置灯的 `computeLit` 并集。  
+- **表现：** 独立 canvas（全 design 390×844，z 高于拖影）：  
+  - `light-beam.png` 连接（宽度随 openT 中心变宽）  
+  - `light-glow.png` 光斑（openT 整体 scale）  
+  - `mix-blend-mode: plus-lighter`（Additive）  
+- **位置关系**只读 `VIEW_STYLE`（glowForward/Side/Offset、beam*）。  
+- 放下清空 canvas；手电本体不随 openT 缩放。
 
-若坚持 Three 盘面：同样正交俯视，格 = PlaneGeometry。
+### R11.2 放置态
+
+- 完整 `computeLit` 直线布光；多 light 并集。  
+- 可不画扫描光效；格 lit 标记可选。
+
+### R11.3 鬼表现
+
+| 状态 | 表现 |
+|------|------|
+| Hidden | 不挂 DOM |
+| Revealed / Transparent | `ghost.png`；Transparent 用 CSS opacity |
+| 首次出场 | CSS 入场 640ms（S&S + 后仰 + 微左右拧/移）→ smoothstep 接待机 |
+| 待机 | rAF：bob + 轻 squash；质心 `ghostPivotY`（默认贴图中心 50%） |
+
+- **DOM：** `.board-ghost-layer` 与 grid 同框；鬼节点池复用，**禁止**每帧销毁重建。  
+- **尺寸：** `cellSize × ghostSize%`（`--ghost-box`），不是相对整层棋盘。  
+- **用语：** 只说 **图片左/右**（CSS ±X），不说「鬼的左/右」。
+
+**渲染路径：** **DOM/CSS 棋盘 + ui-root**（已定）；Three 仅底座/可选氛围。
 
 ---
 
 ## R12 · 震动
 
 ```ts
-// 仅当拖着 light 且 cell 吸附合法时
-// 用 light 前方「光锥」最近鬼距，或 lit 预览下到鬼的距离
+// 目标（S3.1，尚未实现）：拖 light 时按与鬼距离档位
+// throttle 100–150ms；禁止「光斑每换一格就震」作为默认（易吵）
 
-function hapticFromLight(lightCell, dir, ghosts, board):
-  // 简化：沿 dir 扫描直到墙/出界，看是否碰到鬼格
-  // 或：computeLit 后，对每个 Hidden/Transparent 鬼，若在 lit 中 → 强震一次 edge
-  // PRODUCT：光越近越强
-
-  minDist = min over ghosts of manhattan( light front cells, ghost )
-  if minDist == 0: haptics.heavy() // 或 medium
+function hapticFromLight(...):
+  minDist = ...
+  if minDist == 0: haptics.heavy()
   else if minDist == 1: haptics.medium()
   else if minDist <= 3: haptics.light()
-  // throttle 100–150ms
 ```
 
-- 无鬼/太远：不震。  
-- 锁盘/Won：不震。  
-- 调用现有 `haptics` API，失败静默。
+- **当前实现：** 玩法层未调用；仅 `main` 里 `prepare`。  
+- 无鬼/太远/锁盘/Won：不震。  
+- 调用 `src/utils/haptics.ts`，失败静默。
 
 ---
 
@@ -321,3 +336,4 @@ function hapticFromLight(lightCell, dir, ghosts, board):
 | 版本 | 说明 |
 |------|------|
 | v0.1 | R09–R15、R21–R24 冻结 |
+| v0.2 | R11 扫描光效/鬼层/入场待机；R12 标明未实现与换格勿默认震 |

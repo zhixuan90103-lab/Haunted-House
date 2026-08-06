@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| 版本 | **v0.2** |
+| 版本 | **v0.3** |
 | 状态 | **已冻结，供实现**；与 `PRODUCT.md` v0.4 对齐 |
 | 范围 | R01–R08 + 反查补丁（§补漏） |
 | 非范围 | 斜向光、备选道具；交互见 `INTERACTION_SPEC.md` |
@@ -311,28 +311,48 @@ type Ghost = {
   x: number
   y: number
   state: GhostState
-  everLit: boolean   // 是否曾经被照到
+  everLit: boolean   // 是否曾经完成「首次出场」
+  litSince?: number  // 当前连续被照亮起点 performance.now()；离开光清除
 }
+
+/** 首次出场：须连续 isLit 达到此时长（ms）；中途离开清零 */
+const GHOST_REVEAL_DWELL_MS = 1000
 ```
 
 ### 每帧 / 每次光路重算后
 
 ```
-function stepGhost(g, litSet, phase):
+function stepGhost(g, litSet, nowMs, phase):
   // phase: 'playing' | 'camera' | 'won'
   if g.state == Caught: return
 
   const isLit = litSet.has(g.x, g.y)
 
   if isLit:
-    g.everLit = true
-    g.state = Revealed
+    if g.everLit:
+      // 已出过场：再照立刻完全显示
+      g.state = Revealed
+      g.litSince = g.litSince ?? nowMs
+    else:
+      // 首次出场：连续照亮满 dwell 才 everLit + Revealed
+      g.litSince = g.litSince ?? nowMs
+      if nowMs - g.litSince >= GHOST_REVEAL_DWELL_MS:
+        g.everLit = true
+        g.state = Revealed
+      else:
+        g.state = Hidden   // 蓄光中，仍完全隐藏
   else:
+    g.litSince = undefined   // 离开光格：计时重置
     if g.everLit:
       g.state = Transparent
     else:
       g.state = Hidden
 ```
+
+**实现注意：**
+
+- 拖动手电静止时也须推进 `nowMs`（input rAF 每帧 resolve，或放置后 dwell rAF）。
+- **拖灯时不要再开第二套 dwell rAF**，避免 double-paint。
 
 ### 拍照成功
 
@@ -359,15 +379,16 @@ all ghosts: state=Hidden, everLit=false
 
 ### 真值表（playing）
 
-| 当前 state | isLit | everLit 后 | 下一 state |
-|------------|-------|------------|------------|
-| Hidden | 0 | 0 | Hidden |
-| Hidden | 1 | 1 | Revealed |
-| Revealed | 1 | 1 | Revealed |
-| Revealed | 0 | 1 | Transparent |
-| Transparent | 0 | 1 | Transparent |
-| Transparent | 1 | 1 | Revealed |
-| Caught | * | * | Caught |
+| 当前 state | isLit | everLit | dwell 满？ | 下一 state | 备注 |
+|------------|-------|---------|------------|------------|------|
+| Hidden | 0 | 0 | — | Hidden | 清 litSince |
+| Hidden | 1 | 0 | 否 | Hidden | 蓄光中 |
+| Hidden | 1 | 0 | 是 | Revealed | everLit←true |
+| Revealed | 1 | 1 | — | Revealed | |
+| Revealed | 0 | 1 | — | Transparent | |
+| Transparent | 0 | 1 | — | Transparent | |
+| Transparent | 1 | 1 | — | Revealed | 立刻，无 dwell |
+| Caught | * | * | — | Caught | |
 
 ---
 
@@ -509,3 +530,4 @@ if playing and allGhostsRevealed:
 |------|------|
 | v0.1 | R01–R08 冻结 |
 | v0.2 | 反查补漏；与 INTERACTION_SPEC 分工 |
+| v0.3 | R07 首次出场 dwell 1s；`litSince`；真值表更新 |

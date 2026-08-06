@@ -15,13 +15,16 @@
 | 问题 | 看 |
 |------|-----|
 | 玩法 / 规则 / 胜负 | `docs/PRODUCT.md` |
+| **已落地改了什么 / 模块地图** | **`docs/PROGRESS.md`** |
 | 关卡 / 谜题怎么做 | `docs/LEVEL_DESIGN.md` |
-| 实现检索 / 切片 | `docs/IMPLEMENTATION_PLAN.md` |
+| 实现检索 / 切片 Todo | `docs/IMPLEMENTATION_PLAN.md` · `IMPLEMENTATION_TODO.md` |
 | 光路算法规格 | `docs/OPTICS_SPEC.md` |
-| 交互/会话规格 | `docs/INTERACTION_SPEC.md` |
+| 交互/会话/扫描表现 | `docs/INTERACTION_SPEC.md` |
+| 资源路径 | `docs/ASSETS.md` |
+| Step1 交接 | `docs/HANDOFF_SLICE0_STEP1.md` |
 | 工程硬约定 / 目录 | 本文 |
 | 启动链 / 命令 | `docs/ENTRYPOINTS.md` |
-| 工程决策记录 | `docs/ENGINEERING.md` |
+| 工程决策 / 坑 | `docs/ENGINEERING.md` |
 
 ## 入口地图
 
@@ -29,12 +32,12 @@
 |------|------|
 | 产品规则 | `docs/PRODUCT.md` |
 | Web 启动 | `index.html` → `src/main.ts` |
-| 玩法代码（预期） | `src/main.ts` 或 `src/game/*` |
+| 玩法 | `src/game/index.ts`（`mountGame`）+ `src/game/*` |
 | 设计舞台 | `src/adapt/design.ts` |
 | 设备预览 | `src/adapt/devicePreview.ts` |
 | Safe Area | `src/adapt/safeArea.ts` + `src/style.css` |
 | WebGPU | `src/create-renderer.ts` |
-| 震动 JS | `src/utils/haptics.ts` |
+| 震动 JS | `src/utils/haptics.ts`（玩法震动待 S3.1） |
 | 震动 Swift 真源 | `plugins/native-haptics/*` |
 | Capacitor | `capacitor.config.ts`（`contentInset: never`） |
 | 构建 | `vite.config.ts`（**`base: './'`**） |
@@ -44,9 +47,13 @@
 
 ```
 #shell > #viewport > #app > #stage
-  canvas          ← WebGPU
-  #ui-root        ← 所有游戏 UI（safe padding）
-#device-switcher  ← 仅桌面预览例外
+  canvas                 ← WebGPU
+  #ui-root               ← 所有游戏 UI（safe padding）
+    #board-hit
+      .board-grid        ← 格/墙/道具
+      .board-ghost-layer ← 鬼（稳定层，勿并进 cell 每帧重建）
+    .board-light-canvas  ← 扫描光效
+#device-switcher         ← 仅桌面预览例外
 ```
 
 ## 硬性约定
@@ -76,11 +83,13 @@ npm run ios
 
 ## 业务怎么加
 
-- 规则：先读/改 **`docs/PRODUCT.md`**，再写代码  
-- 玩法：改 `src/main.ts` 或 `src/game/*`（可删 demo 立方体）  
+- 规则：先读/改 **`docs/PRODUCT.md`**（及 OPTICS/INTERACTION），再写代码  
+- 进度/模块：先扫 **`docs/PROGRESS.md`**  
+- 玩法：改 `src/game/*`（入口 `mountGame`）  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
-- 探查震动：优先走现有 haptics 链路  
+- 探查震动：走 `haptics`（S3.1；勿默认光斑换格震）  
+- 鬼动画：层 `board-ghost-layer` + CSS 入场 + `ghostIdle` 待机  
 
 ## 刻意不做（工程）
 
