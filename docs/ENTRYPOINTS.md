@@ -1,0 +1,56 @@
+# 入口与调用链
+
+## 1. 命令
+
+| 命令 | 结果 |
+|------|------|
+| `npm run dev` | http://127.0.0.1:5190/ |
+| `npm run build` | `tsc` 检查 + `dist/`（相对路径） |
+| `npm run cap:sync` | build + cap sync ios |
+| `npm run ios:bootstrap` | add ios + 注入插件 + sync |
+| `npm run ios` | sync + open Xcode |
+
+## 2. Web 启动链
+
+```
+index.html
+  → style.css
+  → main.ts
+       → applyNativeClass / safeArea
+       → createRenderer(#stage)
+       → demo scene
+       → mountDevicePreview → computeStageLayout → applyStageTransform
+       → watchStageLayout
+       → haptics + HUD buttons
+```
+
+## 3. DOM
+
+```
+#shell
+  #viewport
+    #app
+      #stage
+        canvas
+        #ui-root
+#device-switcher / #device-label   (web only)
+```
+
+## 4. iOS
+
+```
+Xcode → BridgeViewController
+  → register AdvancedHapticsPlugin
+  → load App/public (= dist)
+  → 同上 Web 链
+```
+
+## 5. 改配置找谁
+
+| 要改 | 文件 |
+|------|------|
+| base / 端口 | `vite.config.ts` |
+| appId | `capacitor.config.ts` |
+| 设计分辨率 | `design.ts` + `style.css` |
+| 震动原生 | `plugins/native-haptics/*.swift` + bootstrap |
+| 启动 HUD | `index.html` + `main.ts` |

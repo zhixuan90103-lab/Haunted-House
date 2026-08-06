@@ -1,0 +1,17 @@
+{
+  "id": "level_001",
+  "title": "第一次探查",
+  "intent": "拖出手电扫光找鬼；点旋改朝向。无镜。",
+  "board": { "width": 5, "height": 5 },
+  "walls": [
+    { "x": 2, "y": 2 }
+  ],
+  "ghosts": [
+    { "id": "g1", "x": 4, "y": 1 },
+    { "id": "g2", "x": 1, "y": 4 }
+  ],
+  "tray": [
+    { "type": "light", "count": 1 }
+  ],
+  "reference": "light at (0,1) facing E lights g1; light at (1,0) facing S toward g2 (path clear of wall at 2,2)."
+}
