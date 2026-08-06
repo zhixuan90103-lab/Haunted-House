@@ -10,7 +10,7 @@ import {
   rotatePropAt,
   type Board,
 } from './board';
-import { stepGhosts } from './ghosts';
+import { anyGhostCharging, stepGhosts } from './ghosts';
 import { attachInput } from './input';
 import { loadLevel, returnToTray, takeFromTray, type LoadedLevel } from './level';
 import level001 from './levels/level_001.json';
@@ -32,8 +32,10 @@ import {
   applyLayoutToDom,
   buildUiShell,
   renderBoard,
+  resetGhostAppear,
   type DomBoardElements,
 } from './view/domBoard';
+import { startGhostIdleLoop } from './view/ghostIdle';
 import {
   freeBeamSpot,
   mountLightFx,
@@ -120,7 +122,7 @@ function canLitCell(rt: Runtime, x: number, y: number): boolean {
   return true; // 空 / 鬼
 }
 
-function resolve(rt: Runtime): void {
+function resolve(rt: Runtime, nowMs: number = performance.now()): void {
   const getOcc = opticsGet(rt);
   rt.freeGlows = [];
 
@@ -154,7 +156,7 @@ function resolve(rt: Runtime): void {
     for (const k of placed.lit) lit.add(k);
 
     rt.lit = lit;
-    rt.ghosts = stepGhosts(rt.ghosts, lit);
+    rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
     return;
   }
 
@@ -171,7 +173,7 @@ function resolve(rt: Runtime): void {
     lights,
   });
   rt.lit = lit;
-  rt.ghosts = stepGhosts(rt.ghosts, lit);
+  rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
 }
 
 function paint(
@@ -196,6 +198,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   const { stage, uiRoot, getLayout } = opts;
   const els = buildUiShell(uiRoot);
   const lightFx = mountLightFx(uiRoot);
+  const ghostIdle = startGhostIdleLoop(uiRoot);
 
   let loaded: LoadedLevel = loadLevel(level001 as LevelDef);
   const rt: Runtime = {
@@ -215,6 +218,38 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   const repaint = () => paint(els, rt, lightFx);
 
+  /**
+   * 首次出场 dwell：手电停在格上不动时 pointer 不再 move，
+   * 用 rAF 推进 litSince → 满 1s 才 Revealed。
+   * 离开格子由 stepGhost 清 litSince。
+   */
+  let dwellRaf = 0;
+  const stopDwellLoop = () => {
+    if (dwellRaf) {
+      cancelAnimationFrame(dwellRaf);
+      dwellRaf = 0;
+    }
+  };
+  const ensureDwellLoop = () => {
+    if (dwellRaf) return;
+    const tick = (now: number) => {
+      dwellRaf = 0;
+      resolve(rt, now);
+      repaint();
+      if (rt.drag?.type === 'light' || anyGhostCharging(rt.ghosts)) {
+        dwellRaf = requestAnimationFrame(tick);
+      }
+    };
+    dwellRaf = requestAnimationFrame(tick);
+  };
+  const afterResolve = () => {
+    if (rt.drag?.type === 'light' || anyGhostCharging(rt.ghosts)) {
+      ensureDwellLoop();
+    } else {
+      stopDwellLoop();
+    }
+  };
+
   const tuner = mountPropTuner(uiRoot, {
     onChange: () => {
       applyPropStyleCss(uiRoot);
@@ -227,6 +262,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   resolve(rt);
   repaint();
+  afterResolve();
 
   const restart = () => {
     loaded = loadLevel(level001 as LevelDef);
@@ -236,14 +272,18 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.drag = null;
     rt.freeGlows = [];
     rt.def = loaded.def;
+    resetGhostAppear();
+    stopDwellLoop();
     resolve(rt);
     repaint();
+    afterResolve();
   };
 
   const detach = attachInput(uiRoot, {
     getBoard: () => rt.board,
     setDrag: (d) => {
       rt.drag = d;
+      if (d?.type === 'light') ensureDwellLoop();
     },
     getLayout,
     getStage: () => stage,
@@ -251,6 +291,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     onDragMove: () => {
       resolve(rt);
       repaint();
+      afterResolve();
     },
     onDrop: (drag) => {
       if (!drag.cell) {
@@ -258,6 +299,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
         rt.drag = null;
         resolve(rt);
         repaint();
+        afterResolve();
         return;
       }
       const { x, y } = drag.cell;
@@ -274,17 +316,20 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       rt.drag = null;
       resolve(rt);
       repaint();
+      afterResolve();
     },
     onCancelDrag: (drag) => {
       if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
       rt.drag = null;
       resolve(rt);
       repaint();
+      afterResolve();
     },
     onRotate: (x, y) => {
       if (rotatePropAt(rt.board, x, y)) {
         resolve(rt);
         repaint();
+        afterResolve();
       }
     },
   });
@@ -295,7 +340,9 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   return {
     dispose: () => {
+      stopDwellLoop();
       detach();
+      ghostIdle.stop();
       tuner.dispose();
       lightFx.dispose();
       uiRoot.replaceChildren();

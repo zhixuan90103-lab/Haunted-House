@@ -52,6 +52,11 @@ export type Ghost = {
   y: number;
   state: GhostState;
   everLit: boolean;
+  /**
+   * 当前连续被照亮的起始 performance.now()；
+   * 离开光格后清除，用于「停留 1s 才首次出场」。
+   */
+  litSince?: number;
 };
 
 export type TrayItem = {

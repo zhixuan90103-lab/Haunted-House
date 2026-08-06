@@ -363,6 +363,14 @@ button:active {
   overflow: visible;
 }
 
+/* 鬼层：与 board-grid 同 inset；节点不随格子重建，动画可连续 */
+.board-ghost-layer {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+
 .cell {
   position: relative;
   border: 0;
@@ -453,12 +461,41 @@ button:active {
 
 .ghost-sprite {
   position: absolute;
-  inset: 8%;
+  /* left/top 由 renderGhostLayer 设为格心 % */
+  left: 50%;
+  top: 50%;
+  /* 相对单格边长（--ghost-box = cellSize * ghostSize%），非相对整层棋盘 */
+  width: var(--ghost-box, 84px);
+  height: var(--ghost-box, 84px);
+  /* 待机：bob + 轻 S&S（由 ghostIdle 写 CSS 变量） */
+  transform: translate(
+      calc(-50% + var(--ghost-offset-x, 0px)),
+      calc(-50% + var(--ghost-offset-y, 0px) + var(--ghost-bob-y, 0px))
+    )
+    scale(var(--ghost-sx, 1), var(--ghost-sy, 1));
+  /* 动态质心：默认贴图中心（50%），待机 S&S 绕此点 */
+  transform-origin: center var(--ghost-pivot-y, 50%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
   pointer-events: none;
+  will-change: transform;
+  /* 给子层 rotateX 后仰用 */
+  perspective: 480px;
+  transform-style: preserve-3d;
+}
+
+/* 入场层：与待机 transform 分离，避免重绘打断时互相覆盖 */
+.ghost-body {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center var(--ghost-pivot-y, 50%);
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
 }
 
 .ghost-sprite img {
@@ -466,6 +503,52 @@ button:active {
   height: 100%;
   object-fit: contain;
   pointer-events: none;
+}
+
+/**
+ * 出现：蓄力 → 弹出（后仰 + 左右转/晃）→ 落地回弹 → 自然接待机
+ * 左右：translateX 位移晃动（负=图片左）+ rotateY 拧
+ * 上下：translateY 比上一版收小
+ * 鬼 DOM 池复用；后半段 ghostIdle smoothstep 混入待机
+ */
+.ghost-body.ghost-entering {
+  animation: ghost-appear 640ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+@keyframes ghost-appear {
+  /* 蓄力：略前倾压扁，左右只轻轻偏一点 */
+  0% {
+    opacity: 0;
+    transform: translate(2%, 8%) scale(0.62, 0.38) rotateX(-12deg) rotateY(-10deg);
+  }
+  10% {
+    opacity: 0.9;
+    transform: translate(1.5%, 7%) scale(0.92, 0.5) rotateX(-10deg) rotateY(-8deg);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(1%, 5%) scale(1.02, 0.52) rotateX(-8deg) rotateY(-6deg);
+  }
+  /* 弹出：后仰 + 轻上冲 + 微微甩向图片左 */
+  34% {
+    opacity: 1;
+    transform: translate(-3.5%, -9%) scale(0.88, 1.18) rotateX(32deg) rotateY(12deg);
+  }
+  /* 落地：微晃回图片右 */
+  50% {
+    transform: translate(2.5%, 5%) scale(1.1, 0.88) rotateX(12deg) rotateY(-8deg);
+  }
+  /* 回弹收中 */
+  66% {
+    transform: translate(-1.5%, -3%) scale(0.95, 1.05) rotateX(6deg) rotateY(4deg);
+  }
+  82% {
+    transform: translate(0.5%, 1%) scale(1.02, 0.98) rotateX(2deg) rotateY(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg);
+  }
 }
 
 .ghost-revealed img {

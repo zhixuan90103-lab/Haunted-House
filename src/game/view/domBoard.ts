@@ -29,10 +29,44 @@ const PROP_SRC: Partial<Record<PropType, string>> = {
 const GHOST_SRC = './ghost.png';
 const BOARD_BG = './board-bg.jpg';
 
+/** 入场动画时长（须与 style.css @keyframes ghost-appear 一致） */
+export const GHOST_APPEAR_MS = 640;
+
+/**
+ * 鬼 DOM 池：打灯/拖拽每帧 repaint 时复用节点，
+ * 避免 replaceChildren 掐断入场 CSS 与待机 CSS 变量。
+ */
+const ghostPool = new Map<string, HTMLElement>();
+
+/** 各鬼首次可见时刻（入场→待机混合用） */
+const ghostAppearT0 = new Map<string, number>();
+
+function releaseGhost(id: string): void {
+  const el = ghostPool.get(id);
+  if (el) {
+    el.remove();
+    ghostPool.delete(id);
+  }
+  ghostAppearT0.delete(id);
+}
+
+/** 重开关卡：清池 + 入场时钟 */
+export function resetGhostAppear(): void {
+  for (const id of [...ghostPool.keys()]) releaseGhost(id);
+  ghostAppearT0.clear();
+}
+
+/** 供待机混合：该鬼入场开始时间戳；无则已结束/未出场 */
+export function getGhostAppearT0(id: string): number | undefined {
+  return ghostAppearT0.get(id);
+}
+
 export type DomBoardElements = {
   root: HTMLElement;
   boardHit: HTMLElement;
   grid: HTMLElement;
+  /** 鬼专用层：与 grid 同框，不随格子 replaceChildren 销毁 */
+  ghostLayer: HTMLElement;
   tray: HTMLElement;
   hud: HTMLElement;
   dragLayer: HTMLElement;
@@ -48,10 +82,12 @@ export function applyLayoutToDom(els: DomBoardElements): void {
   els.boardHit.style.top = `${b.top}px`;
   els.boardHit.style.width = `${b.size}px`;
   els.boardHit.style.height = `${b.size}px`;
-  els.grid.style.left = `${b.padding}px`;
-  els.grid.style.top = `${b.padding}px`;
-  els.grid.style.right = `${b.padding}px`;
-  els.grid.style.bottom = `${b.padding}px`;
+  for (const layer of [els.grid, els.ghostLayer]) {
+    layer.style.left = `${b.padding}px`;
+    layer.style.top = `${b.padding}px`;
+    layer.style.right = `${b.padding}px`;
+    layer.style.bottom = `${b.padding}px`;
+  }
   els.grid.style.gridTemplateColumns = `repeat(${b.cols}, 1fr)`;
   els.grid.style.gridTemplateRows = `repeat(${b.rows}, 1fr)`;
   els.tray.style.left = `${t.left}px`;
@@ -86,7 +122,12 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
 
   const grid = document.createElement('div');
   grid.className = 'board-grid';
-  boardHit.append(grid);
+
+  const ghostLayer = document.createElement('div');
+  ghostLayer.className = 'board-ghost-layer';
+  ghostLayer.setAttribute('aria-hidden', 'true');
+
+  boardHit.append(grid, ghostLayer);
 
   const tray = document.createElement('div');
   tray.id = 'tray';
@@ -103,6 +144,7 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
     root: uiRoot,
     boardHit,
     grid,
+    ghostLayer,
     tray,
     hud,
     dragLayer,
@@ -140,28 +182,82 @@ function propImg(type: PropType, facing: number, extraClass = ''): HTMLElement {
   return wrap;
 }
 
-function ghostEl(g: Ghost): HTMLElement | null {
-  if (g.state === GhostState.Hidden) return null;
+function syncGhostVisualState(el: HTMLElement, g: Ghost): void {
+  el.dataset.state = g.state;
+  el.classList.toggle('ghost-transparent', g.state === GhostState.Transparent);
+  el.classList.toggle('ghost-revealed', g.state === GhostState.Revealed);
+}
+
+function createGhostEl(g: Ghost): HTMLElement {
   const el = document.createElement('div');
   el.className = 'ghost-sprite';
-  el.dataset.state = g.state;
-  if (g.state === GhostState.Transparent) {
-    el.classList.add('ghost-transparent');
-  } else if (g.state === GhostState.Revealed) {
-    el.classList.add('ghost-revealed');
-  }
+  el.dataset.ghostId = g.id;
+
+  const t0 = performance.now();
+  ghostAppearT0.set(g.id, t0);
+  el.dataset.appearT0 = String(t0);
+
+  // 身体层：入场只播一次；待机 bob 在 .ghost-sprite 上，互不覆盖
+  const body = document.createElement('div');
+  body.className = 'ghost-body ghost-entering';
+  body.addEventListener('animationend', (ev) => {
+    if (ev.animationName === 'ghost-appear') {
+      body.classList.remove('ghost-entering');
+    }
+  });
+
   const img = document.createElement('img');
   img.src = GHOST_SRC;
   img.alt = 'ghost';
   img.draggable = false;
-  el.append(img);
+  body.append(img);
+  el.append(body);
+  syncGhostVisualState(el, g);
   return el;
+}
+
+/**
+ * 复用鬼节点：同 id 不重建，仅更新显隐态 class + 格心坐标。
+ * 挂在 ghostLayer 上，不进 cell，避免 repaint 摘挂掐断 CSS 动画。
+ */
+function ensureGhostEl(g: Ghost): HTMLElement {
+  let el = ghostPool.get(g.id);
+  if (!el) {
+    el = createGhostEl(g);
+    ghostPool.set(g.id, el);
+  } else {
+    syncGhostVisualState(el, g);
+  }
+  return el;
+}
+
+/** 把可见鬼画到独立层；Hidden 释放（下次再入场） */
+function renderGhostLayer(
+  layer: HTMLElement,
+  ghosts: Ghost[],
+  board: Board,
+): void {
+  const visible = ghosts.filter((g) => g.state !== GhostState.Hidden);
+  const visibleIds = new Set(visible.map((g) => g.id));
+  const w = Math.max(1, board.width);
+  const h = Math.max(1, board.height);
+
+  for (const g of visible) {
+    const el = ensureGhostEl(g);
+    // 格心：百分比落在 ghostLayer（与 grid 同框）
+    el.style.left = `${((g.x + 0.5) / w) * 100}%`;
+    el.style.top = `${((g.y + 0.5) / h) * 100}%`;
+    if (el.parentElement !== layer) layer.append(el);
+  }
+
+  for (const id of [...ghostPool.keys()]) {
+    if (!visibleIds.has(id)) releaseGhost(id);
+  }
 }
 
 export function renderBoard(els: DomBoardElements, state: RenderState): void {
   const { board, ghosts, lit, tray, drag, hidePropId } = state;
   const cs = cellSize();
-  const ghostByCell = new Map(ghosts.map((g) => [`${g.x},${g.y}`, g]));
 
   els.grid.replaceChildren();
   for (let y = 0; y < board.height; y++) {
@@ -175,7 +271,7 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
       if (lit.has(key)) cell.classList.add('lit');
 
       const occ = get(board, x, y);
-      paintOccupant(cell, occ, hidePropId, ghostByCell.get(key));
+      paintOccupant(cell, occ, hidePropId);
 
       if (drag?.cell && drag.cell.x === x && drag.cell.y === y) {
         cell.classList.add('snap-ok');
@@ -184,6 +280,9 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
       els.grid.append(cell);
     }
   }
+
+  // 鬼在独立层：打灯每帧 repaint 也不摘节点
+  renderGhostLayer(els.ghostLayer, ghosts, board);
 
   // 托盘：按 count 展开为独立槽位，横向平均分布
   els.tray.replaceChildren();
@@ -230,7 +329,6 @@ function paintOccupant(
   cell: HTMLElement,
   occ: Occupant,
   hidePropId: string | undefined,
-  ghost: Ghost | undefined,
 ): void {
   if (occ?.kind === 'wall') {
     cell.classList.add('wall');
@@ -240,10 +338,7 @@ function paintOccupant(
     return;
   }
 
-  if (ghost) {
-    const ge = ghostEl(ghost);
-    if (ge) cell.append(ge);
-  }
+  // 鬼在 board-ghost-layer，不进格子
 
   if (occ?.kind === 'prop') {
     if (hidePropId && occ.id === hidePropId) return;
