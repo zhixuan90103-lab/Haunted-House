@@ -10,6 +10,7 @@ import {
   rotatePropAt,
   type Board,
 } from './board';
+import { createScanHaptics } from './feel/scan-haptics';
 import { anyGhostCharging, stepGhosts } from './ghosts';
 import { attachInput } from './input';
 import { loadLevel, returnToTray, takeFromTray, type LoadedLevel } from './level';
@@ -122,7 +123,11 @@ function canLitCell(rt: Runtime, x: number, y: number): boolean {
   return true; // 空 / 鬼
 }
 
-function resolve(rt: Runtime, nowMs: number = performance.now()): void {
+function resolve(
+  rt: Runtime,
+  scanHaptics: ReturnType<typeof createScanHaptics>,
+  nowMs: number = performance.now(),
+): void {
   const getOcc = opticsGet(rt);
   rt.freeGlows = [];
 
@@ -156,9 +161,20 @@ function resolve(rt: Runtime, nowMs: number = performance.now()): void {
     for (const k of placed.lit) lit.add(k);
 
     rt.lit = lit;
+    const ghostsPrev = rt.ghosts;
     rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
+    // 探查震动：仅握灯扫描（光斑格距鬼 + 出场尖峰）
+    scanHaptics.onScanFrame({
+      spotCell: cell,
+      ghostsPrev,
+      ghosts: rt.ghosts,
+      nowMs,
+    });
     return;
   }
+
+  // 放下手电 → 结束扫描震动（盘上灯亮不震）
+  if (scanHaptics.isActive()) scanHaptics.end();
 
   // —— 放置：完整直线布光 ——
   const lights = collectLightsFromGet(
@@ -199,6 +215,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   const els = buildUiShell(uiRoot);
   const lightFx = mountLightFx(uiRoot);
   const ghostIdle = startGhostIdleLoop(uiRoot);
+  const scanHaptics = createScanHaptics();
 
   let loaded: LoadedLevel = loadLevel(level001 as LevelDef);
   const rt: Runtime = {
@@ -237,7 +254,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       dwellRaf = 0;
       // 拖灯中改由 input rAF 负责，本循环让出
       if (rt.drag?.type === 'light') return;
-      resolve(rt, now);
+      resolve(rt, scanHaptics, now);
       repaint();
       if (anyGhostCharging(rt.ghosts)) {
         dwellRaf = requestAnimationFrame(tick);
@@ -264,7 +281,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     },
   });
 
-  resolve(rt);
+  resolve(rt, scanHaptics);
   repaint();
   afterResolve();
 
@@ -278,7 +295,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.def = loaded.def;
     resetGhostAppear();
     stopDwellLoop();
-    resolve(rt);
+    scanHaptics.end();
+    resolve(rt, scanHaptics);
     repaint();
     afterResolve();
   };
@@ -289,12 +307,14 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       rt.drag = d;
       // 拖灯：停掉 dwell，避免与 input rAF 双开
       if (d?.type === 'light') stopDwellLoop();
+      // 非 light 拖或清空：立刻停扫描震（不等下一帧 resolve）
+      if (d?.type !== 'light') scanHaptics.end();
     },
     getLayout,
     getStage: () => stage,
     onTrayPick: (type: PropType) => takeFromTray(rt.tray, type),
     onDragMove: () => {
-      resolve(rt);
+      resolve(rt, scanHaptics);
       repaint();
       afterResolve();
     },
@@ -302,7 +322,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       if (!drag.cell) {
         if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
         rt.drag = null;
-        resolve(rt);
+        scanHaptics.end();
+        resolve(rt, scanHaptics);
         repaint();
         afterResolve();
         return;
@@ -319,20 +340,22 @@ export function mountGame(opts: MountGameOptions): GameHandle {
         placeProp(rt.board, x, y, drag.type, drag.facing as DirValue);
       }
       rt.drag = null;
-      resolve(rt);
+      scanHaptics.end();
+      resolve(rt, scanHaptics);
       repaint();
       afterResolve();
     },
     onCancelDrag: (drag) => {
       if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
       rt.drag = null;
-      resolve(rt);
+      scanHaptics.end();
+      resolve(rt, scanHaptics);
       repaint();
       afterResolve();
     },
     onRotate: (x, y) => {
       if (rotatePropAt(rt.board, x, y)) {
-        resolve(rt);
+        resolve(rt, scanHaptics);
         repaint();
         afterResolve();
       }
@@ -346,6 +369,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   return {
     dispose: () => {
       stopDwellLoop();
+      scanHaptics.end();
       detach();
       ghostIdle.stop();
       tuner.dispose();

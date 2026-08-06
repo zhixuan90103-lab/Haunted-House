@@ -21,7 +21,8 @@ import { haptics } from '../../src/utils/haptics';
 
 await haptics.impact('medium');
 await haptics.playTransient(0.5, 0.4);
-await haptics.startContinuous({ intensity: 0.15, sharpness: 0.2 });
+await haptics.startContinuous({ intensity: 1, sharpness: 0.25 }); // base; live level via update
+await haptics.updateContinuous({ intensity: 0.2, sharpness: 0.2 });
 await haptics.stopContinuous();
 await haptics.setKeepAwake(true);
 ```

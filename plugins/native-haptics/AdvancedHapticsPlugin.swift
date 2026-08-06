@@ -13,6 +13,7 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "playPattern", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stackImpact", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startContinuousHaptic", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateContinuousHaptic", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopContinuousHaptic", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setKeepAwake", returnType: CAPPluginReturnPromise),
     ]
@@ -233,9 +234,10 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: - startContinuousHaptic
 
     @objc func startContinuousHaptic(_ call: CAPPluginCall) {
-        let intensity = call.getFloat("intensity") ?? 0.25
+        // Base event at full intensity; live level via updateContinuousHaptic (dynamic multiplier).
+        let intensity = call.getFloat("intensity") ?? 1.0
         let sharpness = call.getFloat("sharpness") ?? 0.3
-        let duration = call.getDouble("duration") ?? 30.0
+        let duration = min(call.getDouble("duration") ?? 30.0, 30.0)
 
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             call.reject("Haptics not supported")
@@ -244,6 +246,12 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
 
         do {
             try ensureEngineRunning()
+
+            // Stop previous continuous if any (no fade — caller owns session)
+            if let prev = continuousPlayer {
+                try? prev.stop(atTime: CHHapticTimeImmediate)
+                continuousPlayer = nil
+            }
 
             let event = CHHapticEvent(
                 eventType: .hapticContinuous,
@@ -261,6 +269,35 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         } catch {
             call.reject("Failed to start continuous haptic: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - updateContinuousHaptic
+    /// Live intensity/sharpness while continuous plays (CHHapticDynamicParameter multipliers).
+    @objc func updateContinuousHaptic(_ call: CAPPluginCall) {
+        let intensity = max(0, min(1, call.getFloat("intensity") ?? 0.25))
+        let sharpness = max(0, min(1, call.getFloat("sharpness") ?? 0.3))
+
+        guard let player = continuousPlayer else {
+            call.resolve()
+            return
+        }
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            call.resolve()
+            return
+        }
+
+        do {
+            let params = [
+                CHHapticDynamicParameter(
+                    parameterID: .hapticIntensityControl, value: intensity, relativeTime: 0),
+                CHHapticDynamicParameter(
+                    parameterID: .hapticSharpnessControl, value: sharpness, relativeTime: 0)
+            ]
+            try player.sendParameters(params, atTime: CHHapticTimeImmediate)
+            call.resolve()
+        } catch {
+            call.reject("Failed to update continuous haptic: \(error.localizedDescription)")
         }
     }
 

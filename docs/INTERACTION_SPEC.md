@@ -277,22 +277,22 @@ function restart():
 
 ---
 
-## R12 · 震动
+## R12 · 震动（扫描会话）
 
-```ts
-// 目标（S3.1，尚未实现）：拖 light 时按与鬼距离档位
-// throttle 100–150ms；禁止「光斑每换一格就震」作为默认（易吵）
+**范围：** 仅 **握着手电扫描**（`drag.type === 'light'`）。放置后盘上灯亮 **不震**。
 
-function hapticFromLight(...):
-  minDist = ...
-  if minDist == 0: haptics.heavy()
-  else if minDist == 1: haptics.medium()
-  else if minDist <= 3: haptics.light()
+```
+① 开灯：会话开始 → 一次 soft transient（通电）
+② 持续：continuous 底噪；光斑格 ↔ 最近鬼曼哈顿距离 → intensity（远也有 floor，近更强，非线性）
+③ 出场：每只鬼 everLit false→true → 一次尖峰 transient
+④ 关灯：放下/取消 → stopContinuous（淡出）
 ```
 
-- **当前实现：** 玩法层未调用；仅 `main` 里 `prepare`。  
-- 无鬼/太远/锁盘/Won：不震。  
-- 调用 `src/utils/haptics.ts`，失败静默。
+- 实现：`src/game/feel/scan-haptics.ts` + `haptics.updateContinuous`  
+- 原生：`plugins/native-haptics` `updateContinuousHaptic`（`sendParameters`）  
+- 距离跟 **光斑落格**（与扫描 lit 一致），**禁止**默认「光斑每换格 impact」  
+- continuous ≤30s 自动续播；失败静默；Web 仅弱脉冲  
+- 锁盘/Won（未实装）时不应开会话
 
 ---
 

@@ -42,6 +42,11 @@ type AdvancedHapticsPlugin = {
     sharpness: number;
     duration?: number;
   }): Promise<void>;
+  /** Live modulate continuous (dynamic parameter multipliers; base event usually intensity 1). */
+  updateContinuousHaptic(opts: {
+    intensity: number;
+    sharpness: number;
+  }): Promise<void>;
   stopContinuousHaptic(): Promise<void>;
   setKeepAwake(opts: { enabled: boolean }): Promise<{ enabled: boolean }>;
   prepare?(): Promise<{ supported?: boolean; fallback?: boolean }>;
@@ -208,9 +213,31 @@ export const haptics = {
     );
   },
 
-  async stopContinuous(): Promise<{ ok: boolean; reason?: string }> {
+  async updateContinuous(opts: {
+    intensity: number;
+    sharpness: number;
+  }): Promise<{ ok: boolean; reason?: string }> {
+    if (!enabled) return { ok: false, reason: 'disabled' };
     if (!pluginReady()) return { ok: false, reason: 'not_native_ios' };
-    return safely(() => AdvancedHaptics.stopContinuousHaptic());
+    return safely(() =>
+      AdvancedHaptics.updateContinuousHaptic({
+        intensity: clamp01(opts.intensity),
+        sharpness: clamp01(opts.sharpness),
+      }),
+    );
+  },
+
+  async stopContinuous(): Promise<{ ok: boolean; reason?: string }> {
+    // Always attempt stop when native; ignore enabled so end-of-session can mute
+    if (!pluginReady()) return { ok: false, reason: 'not_native_ios' };
+    try {
+      await AdvancedHaptics.stopContinuousHaptic();
+      lastError = '';
+      return { ok: true };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      return { ok: false, reason: lastError };
+    }
   },
 
   async setKeepAwake(keep: boolean): Promise<{ ok: boolean; reason?: string }> {

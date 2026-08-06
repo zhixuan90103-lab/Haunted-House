@@ -77,7 +77,7 @@
 | 手感2 | 固定 K、抬升、短平滑、托盘/盘比例 | `feel/*` |
 | 拿起缩放 | 托盘→拖动尺寸；本体不随 openT 缩放 | `drag-session` · `domBoard` |
 | 吸附描边 | 放置预览 snap-ok（扫描 lit 不依赖吸附格） | `domBoard` |
-| 震动 | **玩法层未接**；仅 prepare；规格见 INTERACTION R12（待 S3） | `haptics.ts` |
+| 震动 | **S3.1 扫描会话**：开灯 tip + 跟距 continuous + 出场尖峰 + 放下停 | `feel/scan-haptics.ts` · `haptics.updateContinuous` · Swift `updateContinuousHaptic` |
 
 ### 2.6 工程 / 调参
 
@@ -101,7 +101,7 @@ src/game/
   board.ts / level.ts / levels/level_001.json
   layout.ts          # BOARD/TRAY · designToCell
   input.ts           # 拖放点旋 + feel 会话
-  propStyle.ts / viewStyle.ts / feel/*
+  propStyle.ts / viewStyle.ts / feel/*  # drag-session · scan-haptics
   view/
     domBoard.ts      # 壳 · 格 · 鬼层池 · 托盘 · 拖影
     lightFx.ts       # 扫描光效 canvas
@@ -133,7 +133,7 @@ src/game/
 | 鬼状态 + dwell | OPTICS R07 | 已改：首次 isLit 需连续 1s |
 | 扫描跟手光 | INTERACTION R11 扩展 | 连续光斑 + 中心格 lit |
 | 坐标 | INTERACTION R09 | layout + clientToDesign |
-| 震动 | INTERACTION R12 | **未实现**（S3.1） |
+| 震动 | INTERACTION R12 | 扫描会话已接；真机定参可再调 |
 | 资源 | ASSETS.md | glow/beam/ghost 定稿路径 |
 | 工程壳 | AGENTS.md | 未改硬约定 |
 
@@ -145,7 +145,7 @@ src/game/
 |--------|-----|
 | Step 2 | 镜 UI + 关卡；手测 S2 |
 | Slice 0 收尾 | session Camera/Won、重开、拍照 |
-| S3.1 | 探查震动档位 + throttle（**不要**做「光斑每换格就震」除非产品明确） |
+| S3.1 | ~~探查震动~~ **已做**（持续跟距；非换格 impact）；真机微调 floor/peak |
 | S3 | 音效、安全区打磨 |
 
 ---
