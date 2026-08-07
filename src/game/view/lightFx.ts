@@ -3,8 +3,8 @@
  *
  * 设计：
  * - 显示：连接 light-beam.png + 光斑 light-glow.png + 可落格 snap-frame.png
- * - 扫描：drag light 时跟手 beam/glow + 吸附框
- * - 放置：盘上每盏 light 发射 beam + 前方 glow（openT=1）
+ * - 扫描/可放预览：beam/glow **始终跟手**（designX/Y）；长度按吸附格光路算
+ * - 放置：盘上每盏 light 发射 beam + 前方 glow（openT=1，锚格心）
  * - 全 design canvas；mix-blend-mode: plus-lighter → 对背景 Additive
  * - 位置/尺寸只读 VIEW_STYLE
  */
@@ -128,6 +128,92 @@ export function freeBeamSpot(
 }
 
 /**
+ * 光斑跟手、**不吸附格心**：始终沿 facing 连续偏移。
+ * lengthPx = 灯心→光斑沿朝向的距离（由光路算出标量，不朝格心拉）。
+ */
+export function freeBeamSpotWithLengthPx(
+  designX: number,
+  designY: number,
+  facing: number,
+  lengthPx: number,
+): FreeGlow {
+  const cs = cellSize();
+  const f = ((facing % 4) + 4) % 4;
+  const fwd = DELTA[f as Dir] ?? DELTA[Dir.N];
+  const right = DELTA[((f + 1) % 4) as Dir];
+  const { glowSide, glowOffsetX, glowOffsetY } = VIEW_STYLE;
+  const off = rotateLocalOffset(glowOffsetX, glowOffsetY, facing);
+  const len = Math.max(0, lengthPx);
+  return {
+    designX:
+      designX +
+      fwd.dx * len +
+      right.dx * cs * glowSide +
+      off.x,
+    designY:
+      designY +
+      fwd.dy * len +
+      right.dy * cs * glowSide +
+      off.y,
+  };
+}
+
+/**
+ * 可放预览：光斑最远语义 = 光学第一段尽头格心（落盘时同位置）。
+ * 返回该格；无路径返回 null。
+ */
+export function pathFirstEndCell(path: {
+  segments: Array<{ fromX: number; fromY: number; toX: number; toY: number }>;
+  end: { x: number; y: number } | null;
+}): { x: number; y: number } | null {
+  if (path.segments.length > 0) {
+    const s0 = path.segments[0]!;
+    return { x: s0.toX, y: s0.toY };
+  }
+  if (path.end) return { x: path.end.x, y: path.end.y };
+  return null;
+}
+
+/**
+ * 手电 → 尽头格心 沿 facing 的前移距离（≥0）。
+ * 光斑 = 手电 + facing×此长度（跟手、不吸格）；
+ * 手电在灯格心时 ≈ 落盘光斑位置，最远为盘内尽头格心，不会按 scale 拉出盘外。
+ */
+export function beamLengthTowardEndCell(
+  lightX: number,
+  lightY: number,
+  facing: number,
+  endCell: { x: number; y: number } | null,
+): number | null {
+  if (!endCell) return null;
+  const end = cellToDesignCenter(endCell.x, endCell.y);
+  const f = ((facing % 4) + 4) % 4;
+  const fwd = DELTA[f as Dir] ?? DELTA[Dir.N];
+  // 投影到朝向：手在下方朝上时 length = 手Y→尽头Y
+  const len =
+    (end.dx - lightX) * fwd.dx + (end.dy - lightY) * fwd.dy;
+  return Math.max(0, len);
+}
+
+/** 可放拖灯：连接/光斑共用长度 */
+export function dragPlaceableBeamLengthPx(
+  path: {
+    segments: Array<{ fromX: number; fromY: number; toX: number; toY: number }>;
+    end: { x: number; y: number } | null;
+  },
+  lightX: number,
+  lightY: number,
+  facing: number,
+): number | null {
+  return beamLengthTowardEndCell(
+    lightX,
+    lightY,
+    facing,
+    pathFirstEndCell(path),
+  );
+}
+
+/**
  * 连接光绘制约定（扫描 + 放置共用）：
  * - **锚点 = 灯头节点**（灯心 + 朝向本地 beamOffset），不是贴图中心
  * - 贴图沿本地 -Y（前方）从锚点画出，**长度/宽度缩放不移动锚点**
@@ -208,8 +294,8 @@ function paintBeam(
 }
 
 /**
- * 放置态长光：锚 = beamPlacedOffset*（默认 Y=-30）→ 最远亮格；
- * 长度 = 灯头→尽头距离 × beamPlacedLengthScale%（可调，默认 100 到尽头）。
+ * 长光：灯心 + offset → 尽头；长度 = 灯头→尽头 × beamPlacedLengthScale%。
+ * @param pivotOffset 默认放下锚点；拖灯跟手预览传 beamOffset*
  */
 function paintBeamToEnd(
   ctx: CanvasRenderingContext2D,
@@ -220,6 +306,8 @@ function paintBeamToEnd(
   facing: number,
   cell: number,
   openT: number,
+  pivotOffset?: { x: number; y: number },
+  widthPct?: number,
 ): void {
   if (!beamImg.complete || beamImg.naturalWidth <= 0) return;
   const t = Math.max(0, Math.min(1, openT));
@@ -232,13 +320,9 @@ function paintBeamToEnd(
     beamPlacedLengthScale,
     beamAlpha,
   } = VIEW_STYLE;
-  const pivot = beamPivotWorld(
-    lightX,
-    lightY,
-    facing,
-    beamPlacedOffsetX,
-    beamPlacedOffsetY,
-  );
+  const ox = pivotOffset?.x ?? beamPlacedOffsetX;
+  const oy = pivotOffset?.y ?? beamPlacedOffsetY;
+  const pivot = beamPivotWorld(lightX, lightY, facing, ox, oy);
   const dx = endX - pivot.x;
   const dy = endY - pivot.y;
   const fullLen = Math.hypot(dx, dy);
@@ -246,7 +330,8 @@ function paintBeamToEnd(
 
   const scale = Math.max(0.05, beamPlacedLengthScale / 100);
   const length = fullLen * scale;
-  const thickness = cell * Math.max(0.05, beamPlacedWidth / 100) * t;
+  const wPct = widthPct ?? beamPlacedWidth;
+  const thickness = cell * Math.max(0.05, wPct / 100) * t;
   // 朝向仍指向尽头；长度可缩短（scale<1 时远端不到格心）
   const ang = Math.atan2(dy, dx) + Math.PI / 2;
   paintBeamFromPivot(
@@ -316,8 +401,36 @@ function paintSnapFrame(
   ctx.drawImage(snapImg, dx - size / 2, dy - size / 2, size, size);
 }
 
+/** 棋盘外框（design），用于放置态光效裁剪 */
+function boardClipRect(): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
+  const { left, top, size } = BOARD_LAYOUT;
+  return { x: left, y: top, w: size, h: size };
+}
+
 /**
- * 放置态 / 可放预览：折线段 beam（可经镜）+ 尽头光斑。
+ * 在棋盘矩形内绘制；放置光斑/长 beam 不得画出盘外。
+ */
+function withBoardClip(
+  ctx: CanvasRenderingContext2D,
+  draw: () => void,
+): void {
+  const r = boardClipRect();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.clip();
+  draw();
+  ctx.restore();
+}
+
+/**
+ * 盘上已放灯：折线段 beam（可经镜）+ 尽头光斑；锚在格心。
+ * 整体 clip 在棋盘内，光斑/超长 beam 不超出棋盘。
  */
 function paintPlacedLight(
   ctx: CanvasRenderingContext2D,
@@ -329,39 +442,78 @@ function paintPlacedLight(
   const t = Math.max(0, Math.min(1, openT));
   if (t <= 0.001) return;
 
-  for (let i = 0; i < light.segments.length; i++) {
-    const seg = light.segments[i]!;
-    const from = cellToDesignCenter(seg.fromX, seg.fromY);
-    const to = cellToDesignCenter(seg.toX, seg.toY);
-    const fdx = seg.toX - seg.fromX;
-    const fdy = seg.toY - seg.fromY;
-    let facing = light.facing;
-    if (Math.abs(fdx) + Math.abs(fdy) > 0) {
-      if (fdx > 0) facing = 1;
-      else if (fdx < 0) facing = 3;
-      else if (fdy > 0) facing = 2;
-      else facing = 0;
+  withBoardClip(ctx, () => {
+    for (let i = 0; i < light.segments.length; i++) {
+      const seg = light.segments[i]!;
+      const from = cellToDesignCenter(seg.fromX, seg.fromY);
+      const to = cellToDesignCenter(seg.toX, seg.toY);
+      const fdx = seg.toX - seg.fromX;
+      const fdy = seg.toY - seg.fromY;
+      let facing = light.facing;
+      if (Math.abs(fdx) + Math.abs(fdy) > 0) {
+        if (fdx > 0) facing = 1;
+        else if (fdx < 0) facing = 3;
+        else if (fdy > 0) facing = 2;
+        else facing = 0;
+      }
+      if (i === 0) {
+        paintBeamToEnd(
+          ctx,
+          from.dx,
+          from.dy,
+          to.dx,
+          to.dy,
+          facing as DirValue,
+          cell,
+          t,
+        );
+      } else {
+        paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, t);
+      }
     }
-    if (i === 0) {
-      paintBeamToEnd(
-        ctx,
-        from.dx,
-        from.dy,
-        to.dx,
-        to.dy,
-        facing as DirValue,
-        cell,
-        t,
-      );
-    } else {
-      paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, t);
+
+    if (light.endX != null && light.endY != null) {
+      const to = cellToDesignCenter(light.endX, light.endY);
+      paintGlow(ctx, [{ designX: to.dx, designY: to.dy }], cell, t);
     }
+  });
+}
+
+/**
+ * 拖灯可放预览：连接/光斑跟手、沿 facing、不朝格心吸附；
+ * 仅长度取自光路；镜后折线段仍在格上。
+ */
+function paintDragPreviewLight(
+  ctx: CanvasRenderingContext2D,
+  lightX: number,
+  lightY: number,
+  facing: DirValue,
+  path: PlacedLightFx,
+  freeGlows: FreeGlow[],
+  cell: number,
+  openT: number,
+  beamLengthPx: number | null,
+): void {
+  const t = Math.max(0, Math.min(1, openT));
+  if (t <= 0.001) return;
+
+  // 第一段：沿 facing 连续长度（不 paintBeamToEnd 朝格心）
+  if (beamLengthPx != null && beamLengthPx > 1) {
+    paintBeam(ctx, lightX, lightY, facing, cell, t, beamLengthPx);
+  } else {
+    paintBeam(ctx, lightX, lightY, facing, cell, t);
   }
 
-  if (light.endX != null && light.endY != null) {
-    const to = cellToDesignCenter(light.endX, light.endY);
-    paintGlow(ctx, [{ designX: to.dx, designY: to.dy }], cell, t);
+  // 镜后折线：格心→格心
+  for (let i = 1; i < path.segments.length; i++) {
+    const seg = path.segments[i]!;
+    const from = cellToDesignCenter(seg.fromX, seg.fromY);
+    const to = cellToDesignCenter(seg.toX, seg.toY);
+    paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, t);
   }
+
+  // 光斑跟手、无格吸附
+  paintGlow(ctx, freeGlows, cell, t);
 }
 
 /** 镜后折线段：格心→格心，无灯头 offset */
@@ -439,11 +591,33 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
       paintPlacedLight(ctx, L, cell, 1);
     }
 
-    // 2) 拖灯：可放则完整光路瞬切，否则扫描短光
+    // 2) 拖灯：连接/光斑跟手；可放时长度 = 手电→光学尽头格心
     if (scanning && drag) {
       if (drag.cell && previewLight) {
         paintSnapFrame(ctx, drag.cell.x, drag.cell.y, cell);
-        paintPlacedLight(ctx, previewLight, cell, openT);
+        const lenPx = dragPlaceableBeamLengthPx(
+          {
+            segments: previewLight.segments,
+            end:
+              previewLight.endX != null && previewLight.endY != null
+                ? { x: previewLight.endX, y: previewLight.endY }
+                : null,
+          },
+          drag.designX,
+          drag.designY,
+          drag.facing,
+        );
+        paintDragPreviewLight(
+          ctx,
+          drag.designX,
+          drag.designY,
+          drag.facing,
+          previewLight,
+          freeGlows,
+          cell,
+          openT,
+          lenPx,
+        );
       } else {
         paintBeam(ctx, drag.designX, drag.designY, drag.facing, cell, openT);
         paintGlow(ctx, freeGlows, cell, openT);

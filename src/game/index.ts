@@ -51,7 +51,9 @@ import {
 } from './view/domBoard';
 import { startGhostIdleLoop } from './view/ghostIdle';
 import {
+  dragPlaceableBeamLengthPx,
   freeBeamSpot,
+  freeBeamSpotWithLengthPx,
   mountLightFx,
   type FreeGlow,
   type LightFxHandle,
@@ -78,9 +80,11 @@ type Runtime = {
   lit: Set<string>;
   drag: DragGhost | null;
   def: LevelDef;
-  /** 拖动手电时连续光斑（design）；扫描态用 */
+  /** 拖动手电时光斑（design，始终跟手；长度随位置变） */
   freeGlows: FreeGlow[];
-  /** 可放格预览：完整折线光（与放置态一致） */
+  /**
+   * 可放时光学路径（算长度 / 镜后折线）；绘制时第一段锚在手上，不锚在吸附格。
+   */
   previewLight: PlacedLightFx | null;
   /** 全鬼发现后已解锁镜等进托盘 */
   trayUnlocked: boolean;
@@ -173,7 +177,7 @@ function resolve(
     const drag = rt.drag;
     const ghostsPrev = rt.ghosts;
 
-    // 可放格（有吸附）：按吸附格完整光路，动态长度/光斑
+    // 可放格：光学按吸附格算路径/长度；连接+光斑仍锚在手上（designX/Y）
     if (drag.cell) {
       const { x, y } = drag.cell;
       const facing = drag.facing as Dir;
@@ -195,7 +199,25 @@ function resolve(
         litCount: path.litCells.length,
       };
 
-      // 逻辑 lit = 其它已放灯 + 预览灯
+      // 光斑跟手；长度 = 手电→光学尽头格心（最远=盘内该格中心，连接同距）
+      const lenPx = dragPlaceableBeamLengthPx(
+        path,
+        drag.designX,
+        drag.designY,
+        drag.facing,
+      );
+      rt.freeGlows = [
+        lenPx != null
+          ? freeBeamSpotWithLengthPx(
+              drag.designX,
+              drag.designY,
+              drag.facing,
+              lenPx,
+            )
+          : freeBeamSpot(drag.designX, drag.designY, drag.facing),
+      ];
+
+      // 逻辑 lit = 其它已放灯 + 预览灯（仍用吸附格）
       const lights = collectLightsFromGet(
         rt.board.width,
         rt.board.height,
@@ -225,7 +247,7 @@ function resolve(
       return;
     }
 
-    // 扫描：光斑跟手（前方固定距离），短连接
+    // 无吸附：短连接 + 固定前移光斑（仍跟手）
     const spot = freeBeamSpot(drag.designX, drag.designY, drag.facing);
     rt.freeGlows = [spot];
 
