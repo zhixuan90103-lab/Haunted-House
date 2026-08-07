@@ -38,12 +38,17 @@ export function validateLevel(def: LevelDef): void {
     if (t.count < 0) throw new Error(`tray count < 0 for ${t.type}`);
   }
 
+  const ghostKeys = new Set(def.ghosts.map((g) => `${g.x},${g.y}`));
+
   for (const p of def.lockedProps ?? []) {
     if (p.x < 0 || p.y < 0 || p.x >= width || p.y >= height) {
       throw new Error(`lockedProp out of bounds`);
     }
     if (wallKeys.has(`${p.x},${p.y}`)) {
       throw new Error(`lockedProp on wall`);
+    }
+    if (ghostKeys.has(`${p.x},${p.y}`)) {
+      throw new Error(`lockedProp on ghost cell`);
     }
   }
 }

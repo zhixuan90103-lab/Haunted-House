@@ -43,6 +43,7 @@ import {
   type FreeGlow,
   type LightFxHandle,
 } from './view/lightFx';
+import { mountHapticTuner } from './view/hapticTuner';
 import { mountPropTuner } from './view/propTuner';
 
 export type MountGameOptions = {
@@ -280,12 +281,14 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       repaint();
     },
   });
+  const hapticTuner = mountHapticTuner(uiRoot);
 
   resolve(rt, scanHaptics);
   repaint();
   afterResolve();
 
   const restart = () => {
+    // 本关重开：鬼全隐藏、道具回托盘、盘面清空玩家摆放、停扫描震动
     loaded = loadLevel(level001 as LevelDef);
     rt.board = loaded.board;
     rt.ghosts = loaded.ghosts;
@@ -301,14 +304,22 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     afterResolve();
   };
 
+  els.restartBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    restart();
+  });
+  els.restartBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+
   const detach = attachInput(uiRoot, {
     getBoard: () => rt.board,
     setDrag: (d) => {
       rt.drag = d;
       // 拖灯：停掉 dwell，避免与 input rAF 双开
       if (d?.type === 'light') stopDwellLoop();
-      // 非 light 拖或清空：立刻停扫描震（不等下一帧 resolve）
-      if (d?.type !== 'light') scanHaptics.end();
+      // 清空 drag 时由 onDrop/onCancel 显式 end；此处勿对 null 重复 end
+      // （endPointer 总会 setDrag(null)，避免与 drop 竞态掐断刚启动的 continuous）
+      if (d != null && d.type !== 'light') scanHaptics.end();
     },
     getLayout,
     getStage: () => stage,
@@ -373,6 +384,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       detach();
       ghostIdle.stop();
       tuner.dispose();
+      hapticTuner.dispose();
       lightFx.dispose();
       uiRoot.replaceChildren();
       uiRoot.classList.remove('game-ui');

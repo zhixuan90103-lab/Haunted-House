@@ -6,8 +6,9 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * - base './' on Vite → relative assets for offline WebView
  */
 const config: CapacitorConfig = {
-  appId: 'com.example.portraitwebgpubase',
-  appName: 'Portrait WebGPU Base',
+  // 独立包名，避免覆盖手机上其它调试包（原 com.example.portraitwebgpubase）
+  appId: 'com.zhixuan90103.hauntedhouse',
+  appName: 'Haunted House',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

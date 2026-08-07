@@ -93,9 +93,13 @@ renderer.setSize(390, 844)          // 始终设计分辨率
 
 真源：`plugins/native-haptics/`  
 JS：`src/utils/haptics.ts`（`registerPlugin('AdvancedHaptics')`）  
-注册：`BridgeViewController.capacitorDidLoad`  
+注册：`BridgeViewController` → `registerPluginInstance(AdvancedHapticsPlugin)`  
 
-业务震动节奏写在游戏层，不要改插件除非新增原生方法。
+**硬坑（2026-08）：** `SceneDelegate` 必须用 `BridgeViewController()`，**禁止** `CAPBridgeViewController()`。  
+裸 `CAPBridgeViewController` 不会跑本地插件注册 → 诊断显示 `platform=ios` 但 `未接通`。  
+
+业务震动节奏写在游戏层，不要改插件除非新增原生方法。  
+改 Swift 后：`npm run ios` / Xcode Run 重装真机。
 
 ## 8. iOS 工作流
 

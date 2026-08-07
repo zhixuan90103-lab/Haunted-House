@@ -282,17 +282,18 @@ function restart():
 **范围：** 仅 **握着手电扫描**（`drag.type === 'light'`）。放置后盘上灯亮 **不震**。
 
 ```
-① 开灯：会话开始 → 一次 soft transient（通电）
-② 持续：continuous 底噪；光斑格 ↔ 最近鬼曼哈顿距离 → intensity（远也有 floor，近更强，非线性）
-③ 出场：每只鬼 everLit false→true → 一次尖峰 transient
-④ 关灯：放下/取消 → stopContinuous（淡出）
+① 开灯：一次 transient（openIntensity / openSharpness）
+② 持续：continuous 底噪（floor*）；仅相对 **未发现** 鬼（!everLit）
+   · dist ≥ nearRadius → floor；dist=0 → peak；中间 **线性** 插值
+③ 过鬼格：光斑换格且落在 **未发现** 鬼格 → 轻 transient（ghostPass*）
+④ 出场：everLit false→true → **三段瞬态**（reveal1/2/3 + 间隔 ms）；之后该鬼不再触发 ②③
+⑤ 关灯：放下/取消 → stopContinuous
 ```
 
-- 实现：`src/game/feel/scan-haptics.ts` + `haptics.updateContinuous`  
-- 原生：`plugins/native-haptics` `updateContinuousHaptic`（`sendParameters`）  
-- 距离跟 **光斑落格**（与扫描 lit 一致），**禁止**默认「光斑每换格 impact」  
-- continuous ≤30s 自动续播；失败静默；Web 仅弱脉冲  
-- 锁盘/Won（未实装）时不应开会话
+- 实现：`scan-haptics.ts` · 参数 `haptic-config.ts` · 调参 `hapticTuner`  
+- continuous：事件 base=1，`updateContinuous` 为绝对 0…1  
+- **禁止**默认「光斑每换格 impact」；过鬼格仅边沿轻点  
+- continuous ≤30s 续播；Web 弱脉冲
 
 ---
 

@@ -1,91 +1,98 @@
 /**
  * Scan-session haptics (hand-held light only).
  *
- * ① open: one soft transient when lamp session starts
- * ② continuous: weak floor far → stronger near ghost (spot cell, manhattan)
- * ③ reveal spike: each ghost everLit false→true once
- * ④ end: stop continuous on drop (placed lights do not rumble)
- *
- * Native: Core Haptics continuous + sendParameters.
- * Web: weak pulse throttle only (no true continuous).
+ * ① open: one transient
+ * ② continuous: shallow fixed base; slight bump when minDist ≤ nearRadius
+ * ③ ghost cell pass: light transient on entering a ghost cell
+ * ④ first everLit: reveal spike (kept)
  */
 
 import { haptics } from '../../utils/haptics';
 import type { Ghost } from '../types';
-
-/** Continuous clip max (Core Haptics); renew before expiry */
-const CONTINUOUS_DURATION_S = 30;
-const RENEW_BEFORE_MS = 2000;
-
-/** How often to push intensity (ms); not every cell change */
-const UPDATE_INTERVAL_MS = 60;
-
-/** Open pulse then start continuous */
-const OPEN_TO_CONTINUOUS_MS = 70;
-
-// —— Feel anchors (tunable; intensity is perceptual, non-linear in dist) ——
-const OPEN_INTENSITY = 0.42;
-const OPEN_SHARPNESS = 0.32;
-
-const REVEAL_INTENSITY = 0.78;
-const REVEAL_SHARPNESS = 0.55;
-
-/** Far floor (always on while scanning — avoid sudden spike) */
-const FLOOR_INTENSITY = 0.1;
-const FLOOR_SHARPNESS = 0.18;
-
-/** On ghost cell (dist 0) */
-const PEAK_INTENSITY = 0.62;
-const PEAK_SHARPNESS = 0.28;
-
-/** dist ≥ this uses pure floor */
-const FAR_DIST = 5;
+import { cellKey } from '../types';
+import { SCAN_HAPTIC } from './haptic-config';
 
 export type ScanHapticsHandle = {
-  /** Call each frame while dragging a light (after stepGhosts). */
   onScanFrame: (args: {
     spotCell: { x: number; y: number } | null;
     ghostsPrev: Ghost[];
     ghosts: Ghost[];
     nowMs?: number;
   }) => void;
-  /** Drop / cancel / dispose — stop session. */
   end: () => void;
   isActive: () => boolean;
 };
+
+/** 仅未发现的鬼（Hidden / !everLit）参与近距与过格震动 */
+function undiscoveredGhosts(ghosts: Ghost[]): Ghost[] {
+  return ghosts.filter((g) => !g.everLit);
+}
 
 function minManhattanToGhosts(
   cell: { x: number; y: number } | null,
   ghosts: Ghost[],
 ): number {
-  if (!cell || ghosts.length === 0) return FAR_DIST + 1;
+  const list = undiscoveredGhosts(ghosts);
+  if (!cell || list.length === 0) return Number.POSITIVE_INFINITY;
   let min = Infinity;
-  for (const g of ghosts) {
+  for (const g of list) {
     const d = Math.abs(g.x - cell.x) + Math.abs(g.y - cell.y);
     if (d < min) min = d;
   }
   return min;
 }
 
+function isUndiscoveredGhostCell(
+  cell: { x: number; y: number } | null,
+  ghosts: Ghost[],
+): boolean {
+  if (!cell) return false;
+  return undiscoveredGhosts(ghosts).some(
+    (g) => g.x === cell.x && g.y === cell.y,
+  );
+}
+
 /**
- * Map manhattan dist → intensity/sharpness.
- * Smooth ease: closer ramps up; far stays on floor.
+ * Continuous level vs nearest-ghost manhattan distance:
+ * - dist >= nearRadius（或更远）→ 底噪 floor
+ * - dist == 0 → peak（光斑在鬼格）
+ * - 中间线性插值（格点离散，手感为分档爬升）
  */
 export function intensityFromDist(dist: number): {
   intensity: number;
   sharpness: number;
 } {
-  if (!Number.isFinite(dist) || dist >= FAR_DIST) {
-    return { intensity: FLOOR_INTENSITY, sharpness: FLOOR_SHARPNESS };
+  const {
+    floorIntensity,
+    floorSharpness,
+    peakIntensity,
+    peakSharpness,
+    nearRadius,
+  } = SCAN_HAPTIC;
+  const r = Math.max(1, nearRadius);
+
+  if (!Number.isFinite(dist) || dist >= r) {
+    return { intensity: floorIntensity, sharpness: floorSharpness };
   }
-  // t: 1 at dist0, 0 at FAR_DIST
-  const t = 1 - dist / FAR_DIST;
-  // ease-in so near range has more resolution (matches log-ish feel)
-  const w = t * t;
+  if (dist <= 0) {
+    return { intensity: peakIntensity, sharpness: peakSharpness };
+  }
+
+  // t: 1 at dist 0, 0 at dist == r  → linear in dist
+  const t = 1 - dist / r;
   return {
-    intensity: FLOOR_INTENSITY + (PEAK_INTENSITY - FLOOR_INTENSITY) * w,
-    sharpness: FLOOR_SHARPNESS + (PEAK_SHARPNESS - FLOOR_SHARPNESS) * w,
+    intensity: floorIntensity + (peakIntensity - floorIntensity) * t,
+    sharpness: floorSharpness + (peakSharpness - floorSharpness) * t,
   };
+}
+
+function impactStyleFromLevel(
+  level: number,
+): 'soft' | 'light' | 'medium' | 'heavy' {
+  if (level < 0.28) return 'soft';
+  if (level < 0.5) return 'light';
+  if (level < 0.75) return 'medium';
+  return 'heavy';
 }
 
 function everLitMap(ghosts: Ghost[]): Map<string, boolean> {
@@ -97,12 +104,20 @@ function everLitMap(ghosts: Ghost[]): Map<string, boolean> {
 export function createScanHaptics(): ScanHapticsHandle {
   let active = false;
   let continuousOn = false;
+  let pulseFallback = false;
   let continuousStartedAt = 0;
   let lastUpdateAt = 0;
   let lastI = -1;
   let lastS = -1;
+  let desiredI = SCAN_HAPTIC.floorIntensity;
+  let desiredS = SCAN_HAPTIC.floorSharpness;
   let openTimer: ReturnType<typeof setTimeout> | null = null;
   let starting = false;
+  let gen = 0;
+
+  /** Last spot cell key for ghost-pass edge */
+  let lastSpotKey: string | null = null;
+  let lastGhostPassAt = 0;
 
   const clearOpenTimer = () => {
     if (openTimer != null) {
@@ -111,13 +126,62 @@ export function createScanHaptics(): ScanHapticsHandle {
     }
   };
 
+  const fireOpen = () => {
+    const i = SCAN_HAPTIC.openIntensity;
+    const s = SCAN_HAPTIC.openSharpness;
+    void haptics.playTransient(i, s);
+    if (SCAN_HAPTIC.useImpactOpen >= 0.5) {
+      void haptics.impact(impactStyleFromLevel(i), 10, { intensity: i });
+    }
+  };
+
+  /**
+   * 出场三段瞬态：#1 立即，#2 在 +reveal1to2Ms，#3 再 +reveal2to3Ms。
+   * 每下独立 intensity/sharpness；UIKit 仅叠在第 1 下（可关）。
+   */
+  const fireReveal = () => {
+    const h = SCAN_HAPTIC;
+    const hit = (intensity: number, sharpness: number, withUiKit: boolean) => {
+      void haptics.playTransient(intensity, sharpness);
+      if (withUiKit && h.useImpactReveal >= 0.5) {
+        void haptics.impact(impactStyleFromLevel(intensity), 10, {
+          intensity,
+        });
+      }
+    };
+
+    hit(h.reveal1Intensity, h.reveal1Sharpness, true);
+
+    const t12 = Math.max(0, h.reveal1to2Ms);
+    const t23 = Math.max(0, h.reveal2to3Ms);
+
+    window.setTimeout(() => {
+      hit(h.reveal2Intensity, h.reveal2Sharpness, false);
+    }, t12);
+
+    window.setTimeout(() => {
+      hit(h.reveal3Intensity, h.reveal3Sharpness, false);
+    }, t12 + t23);
+  };
+
+  /** Light tick when light spot enters a ghost cell */
+  const fireGhostPass = (now: number) => {
+    if (now - lastGhostPassAt < SCAN_HAPTIC.ghostPassCooldownMs) return;
+    lastGhostPassAt = now;
+    const i = SCAN_HAPTIC.ghostPassIntensity;
+    const s = SCAN_HAPTIC.ghostPassSharpness;
+    void haptics.playTransient(i, s);
+    if (SCAN_HAPTIC.useImpactGhostPass >= 0.5) {
+      void haptics.impact('soft', 6, { intensity: i });
+    }
+  };
+
   const applyLevel = (intensity: number, sharpness: number, now: number) => {
     if (!continuousOn) return;
-    if (now - lastUpdateAt < UPDATE_INTERVAL_MS) return;
-    // skip tiny deltas to reduce IPC noise
+    if (now - lastUpdateAt < SCAN_HAPTIC.updateIntervalMs) return;
     if (
-      Math.abs(intensity - lastI) < 0.02 &&
-      Math.abs(sharpness - lastS) < 0.02
+      Math.abs(intensity - lastI) < 0.008 &&
+      Math.abs(sharpness - lastS) < 0.008
     ) {
       return;
     }
@@ -131,80 +195,125 @@ export function createScanHaptics(): ScanHapticsHandle {
     intensity: number,
     sharpness: number,
     now: number,
+    myGen: number,
   ) => {
-    if (!active) return;
+    if (!active || myGen !== gen) return;
+
     const r = await haptics.startContinuous({
-      // Base full; live level via updateContinuous multipliers
       intensity: 1,
       sharpness: 1,
-      duration: CONTINUOUS_DURATION_S,
+      duration: Math.min(30, SCAN_HAPTIC.continuousDurationS),
     });
-    if (!active) {
+
+    if (!active || myGen !== gen) {
       void haptics.stopContinuous();
       return;
     }
-    continuousOn = r.ok;
-    continuousStartedAt = now;
-    lastI = -1;
-    lastS = -1;
-    lastUpdateAt = 0;
-    if (continuousOn) {
+
+    if (r.ok) {
+      continuousOn = true;
+      pulseFallback = false;
+      continuousStartedAt = now;
+      lastI = -1;
+      lastS = -1;
+      lastUpdateAt = 0;
       void haptics.updateContinuous({ intensity, sharpness });
       lastI = intensity;
       lastS = sharpness;
       lastUpdateAt = now;
+    } else {
+      continuousOn = false;
+      pulseFallback = true;
+      console.warn(
+        '[scan-haptics] continuous failed, pulse fallback',
+        r.reason,
+        haptics.getLastError(),
+      );
     }
   };
 
-  const renewIfNeeded = (intensity: number, sharpness: number, now: number) => {
+  const renewIfNeeded = (
+    intensity: number,
+    sharpness: number,
+    now: number,
+    myGen: number,
+  ) => {
     if (!continuousOn) return;
-    if (now - continuousStartedAt < CONTINUOUS_DURATION_S * 1000 - RENEW_BEFORE_MS) {
+    const maxMs = Math.min(30, SCAN_HAPTIC.continuousDurationS) * 1000;
+    if (now - continuousStartedAt < maxMs - SCAN_HAPTIC.renewBeforeMs) {
       return;
     }
-    void startContinuousAt(intensity, sharpness, now);
+    void startContinuousAt(intensity, sharpness, now, myGen);
+  };
+
+  const pulseTick = (intensity: number, now: number) => {
+    if (!pulseFallback && continuousOn) return;
+    if (now - lastUpdateAt < SCAN_HAPTIC.pulseFallbackMs) return;
+    lastUpdateAt = now;
+    void haptics.impact(impactStyleFromLevel(intensity), 8, {
+      intensity: Math.max(0.12, intensity),
+    });
   };
 
   const fireRevealSpikes = (prev: Ghost[], next: Ghost[]) => {
     const before = everLitMap(prev);
     for (const g of next) {
       if (g.everLit && before.get(g.id) === false) {
-        void haptics.playTransient(REVEAL_INTENSITY, REVEAL_SHARPNESS);
+        fireReveal();
       }
     }
   };
 
-  const webPulse = (intensity: number, now: number) => {
-    if (haptics.isNativeIos()) return;
-    if (now - lastUpdateAt < 120) return;
-    lastUpdateAt = now;
-    // Pattern length scales weakly with intensity
-    const ms = Math.round(8 + intensity * 28);
-    void haptics.stackImpact(intensity, FLOOR_SHARPNESS, ms);
+  const maybeGhostPass = (
+    spotCell: { x: number; y: number } | null,
+    ghosts: Ghost[],
+    now: number,
+  ) => {
+    const key = spotCell ? cellKey(spotCell.x, spotCell.y) : null;
+    if (key !== lastSpotKey) {
+      // 已发现（everLit）的鬼：路过不叠过格瞬态
+      const entered =
+        key != null && isUndiscoveredGhostCell(spotCell, ghosts);
+      lastSpotKey = key;
+      if (entered) fireGhostPass(now);
+    }
   };
 
-  const beginSession = (intensity: number, sharpness: number) => {
+  const beginSession = () => {
     if (active || starting) return;
     starting = true;
     active = true;
-    // ① open lamp
-    void haptics.playTransient(OPEN_INTENSITY, OPEN_SHARPNESS);
+    const myGen = ++gen;
+    lastSpotKey = null;
+
+    fireOpen();
+
     clearOpenTimer();
     openTimer = setTimeout(() => {
       openTimer = null;
       starting = false;
-      void startContinuousAt(intensity, sharpness, performance.now());
-    }, OPEN_TO_CONTINUOUS_MS);
+      if (!active || myGen !== gen) return;
+      void startContinuousAt(
+        desiredI,
+        desiredS,
+        performance.now(),
+        myGen,
+      );
+    }, Math.max(0, SCAN_HAPTIC.openToContinuousMs));
   };
 
   const end = () => {
+    gen += 1;
     clearOpenTimer();
     starting = false;
-    if (!active && !continuousOn) return;
+    if (!active && !continuousOn && !pulseFallback) return;
     active = false;
     continuousOn = false;
+    pulseFallback = false;
     continuousStartedAt = 0;
     lastI = -1;
     lastS = -1;
+    lastSpotKey = null;
     void haptics.stopContinuous();
   };
 
@@ -215,26 +324,31 @@ export function createScanHaptics(): ScanHapticsHandle {
       const now = nowMs ?? performance.now();
       const dist = minManhattanToGhosts(spotCell, ghosts);
       const { intensity, sharpness } = intensityFromDist(dist);
+      desiredI = intensity;
+      desiredS = sharpness;
 
       if (!active) {
-        beginSession(intensity, sharpness);
-        // still check reveal in same frame (rare)
+        beginSession();
+        maybeGhostPass(spotCell, ghosts, now);
         fireRevealSpikes(ghostsPrev, ghosts);
         return;
       }
 
       if (starting) {
+        maybeGhostPass(spotCell, ghosts, now);
         fireRevealSpikes(ghostsPrev, ghosts);
         return;
       }
 
       if (continuousOn) {
-        renewIfNeeded(intensity, sharpness, now);
+        renewIfNeeded(intensity, sharpness, now, gen);
         applyLevel(intensity, sharpness, now);
       } else {
-        webPulse(intensity, now);
+        pulseFallback = true;
+        pulseTick(intensity, now);
       }
 
+      maybeGhostPass(spotCell, ghosts, now);
       fireRevealSpikes(ghostsPrev, ghosts);
     },
 

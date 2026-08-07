@@ -19,10 +19,13 @@ npm run ios:bootstrap
 ```ts
 import { haptics } from '../../src/utils/haptics';
 
+await haptics.diagnose(); // platform + plugin + impact + buzz
+await haptics.buzz('heavy'); // AudioServices smoke test
 await haptics.impact('medium');
 await haptics.playTransient(0.5, 0.4);
-await haptics.startContinuous({ intensity: 1, sharpness: 0.25 }); // base; live level via update
-await haptics.updateContinuous({ intensity: 0.2, sharpness: 0.2 });
+await haptics.startContinuous({ intensity: 0.3, sharpness: 0.25 });
+await haptics.updateContinuous({ intensity: 0.5, sharpness: 0.3 });
 await haptics.stopContinuous();
-await haptics.setKeepAwake(true);
 ```
+
+改 Swift 后必须 **重新编译 iOS App**（`npm run ios` / Xcode Run），仅 `vite` 热更新不够。

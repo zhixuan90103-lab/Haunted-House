@@ -29,29 +29,39 @@ export type HapticCurve = {
 };
 
 type AdvancedHapticsPlugin = {
-  impact(opts?: { style?: ImpactStyle }): Promise<void>;
-  notification(opts?: { type?: NotificationType }): Promise<void>;
-  selection(): Promise<void>;
+  impact(opts?: {
+    style?: ImpactStyle;
+    intensity?: number;
+    withBuzz?: boolean;
+  }): Promise<unknown>;
+  notification(opts?: { type?: NotificationType }): Promise<unknown>;
+  selection(): Promise<unknown>;
   playPattern(opts: {
     events: HapticEvent[];
     parameterCurves?: HapticCurve[];
-  }): Promise<void>;
-  stackImpact(opts: { intensity: number; sharpness: number }): Promise<void>;
+  }): Promise<unknown>;
+  stackImpact(opts: { intensity: number; sharpness: number }): Promise<unknown>;
   startContinuousHaptic(opts: {
     intensity: number;
     sharpness: number;
     duration?: number;
-  }): Promise<void>;
-  /** Live modulate continuous (dynamic parameter multipliers; base event usually intensity 1). */
+  }): Promise<unknown>;
   updateContinuousHaptic(opts: {
     intensity: number;
     sharpness: number;
-  }): Promise<void>;
-  stopContinuousHaptic(): Promise<void>;
+  }): Promise<unknown>;
+  stopContinuousHaptic(): Promise<unknown>;
   setKeepAwake(opts: { enabled: boolean }): Promise<{ enabled: boolean }>;
+  diagnose(): Promise<Record<string, unknown>>;
+  buzz(opts?: { style?: ImpactStyle }): Promise<unknown>;
   prepare?(): Promise<{ supported?: boolean; fallback?: boolean }>;
 };
 
+/**
+ * Do NOT register a `web` impl that no-ops — on iOS, if PluginHeaders
+ * miss the native plugin, Capacitor would silently use web and never
+ * hit Swift. Prefer UNIMPLEMENTED so we can see failures.
+ */
 const AdvancedHaptics = registerPlugin<AdvancedHapticsPlugin>('AdvancedHaptics');
 
 let enabled = true;
@@ -60,8 +70,11 @@ let lastError = '';
 const isNativeIos = () =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
-const pluginReady = () =>
-  isNativeIos() && Capacitor.isPluginAvailable('AdvancedHaptics');
+/**
+ * Local plugins registered in BridgeViewController may report
+ * isPluginAvailable=false on some Capacitor builds — still call native.
+ */
+const pluginReady = () => isNativeIos();
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
@@ -98,6 +111,19 @@ function vibrateWeb(pattern: number | number[]): void {
   }
 }
 
+export type HapticsDiagnose = {
+  ok: boolean;
+  platform: string;
+  isNative: boolean;
+  isIos: boolean;
+  pluginAvailable: boolean;
+  lastError: string;
+  native?: Record<string, unknown>;
+  impactResult?: { ok: boolean; reason?: string };
+  buzzResult?: { ok: boolean; reason?: string };
+  note: string;
+};
+
 export const haptics = {
   isEnabled: () => enabled,
   setEnabled: (v: boolean) => {
@@ -105,6 +131,67 @@ export const haptics = {
   },
   isNativeIos: () => isNativeIos(),
   getLastError: () => lastError,
+
+  /**
+   * End-to-end check: platform → PluginHeaders → diagnose → impact → buzz.
+   * Surface result in UI / console.
+   */
+  async diagnose(): Promise<HapticsDiagnose> {
+    const platform = Capacitor.getPlatform();
+    const isNative = Capacitor.isNativePlatform();
+    const isIos = platform === 'ios';
+    const pluginAvailable = Capacitor.isPluginAvailable('AdvancedHaptics');
+    const out: HapticsDiagnose = {
+      ok: false,
+      platform,
+      isNative,
+      isIos,
+      pluginAvailable,
+      lastError: lastError,
+      note: '',
+    };
+
+    if (!isNative || !isIos) {
+      out.note =
+        '当前不是 iOS Capacitor 壳（浏览器 / 桌面 dev 无真机震动）。请用 Xcode Run 到 iPhone。';
+      console.warn('[haptics.diagnose]', out);
+      return out;
+    }
+
+    if (!pluginAvailable) {
+      out.note =
+        'Capacitor.isPluginAvailable(AdvancedHaptics)=false：原生未导出 PluginHeaders。检查 BridgeViewController 是否 registerPluginInstance，并重新编译 iOS（非仅 sync web）。';
+      console.warn('[haptics.diagnose]', out);
+      // still try nativePromise — sometimes header lags
+    }
+
+    try {
+      out.native = await AdvancedHaptics.diagnose();
+    } catch (err) {
+      out.note = `diagnose() 调用失败: ${err instanceof Error ? err.message : String(err)}`;
+      console.warn('[haptics.diagnose]', out, err);
+      return out;
+    }
+
+    out.impactResult = await this.impact('medium');
+    out.buzzResult = await this.buzz('medium');
+    out.lastError = lastError;
+    out.ok = !!(out.impactResult?.ok || out.buzzResult?.ok);
+    out.note = out.ok
+      ? '原生已响应。若仍无感：系统设置→声音与触感→系统触感反馈 打开。'
+      : `原生 diagnose 有回包但 impact/buzz 失败: ${lastError}`;
+    console.info('[haptics.diagnose]', out);
+    return out;
+  },
+
+  async buzz(style: ImpactStyle = 'medium'): Promise<{ ok: boolean; reason?: string }> {
+    if (!enabled) return { ok: false, reason: 'disabled' };
+    if (!pluginReady()) {
+      vibrateWeb(20);
+      return { ok: false, reason: 'not_native_ios' };
+    }
+    return safely(() => AdvancedHaptics.buzz({ style }));
+  },
 
   async prepare(): Promise<{ ok: boolean; reason?: string; result?: unknown }> {
     if (!enabled) return { ok: false, reason: 'disabled' };
@@ -125,13 +212,23 @@ export const haptics = {
     return safely(() => AdvancedHaptics.impact({ style: 'soft' }));
   },
 
-  async impact(style: ImpactStyle = 'medium', webMs = 10): Promise<{ ok: boolean; reason?: string }> {
+  async impact(
+    style: ImpactStyle = 'medium',
+    webMs = 10,
+    opts?: { intensity?: number; withBuzz?: boolean },
+  ): Promise<{ ok: boolean; reason?: string }> {
     if (!enabled) return { ok: false, reason: 'disabled' };
     if (!pluginReady()) {
       vibrateWeb(webMs);
       return { ok: false, reason: 'not_native_ios' };
     }
-    return safely(() => AdvancedHaptics.impact({ style }));
+    return safely(() =>
+      AdvancedHaptics.impact({
+        style,
+        intensity: opts?.intensity != null ? clamp01(opts.intensity) : 1,
+        withBuzz: opts?.withBuzz ?? false,
+      }),
+    );
   },
 
   async notification(

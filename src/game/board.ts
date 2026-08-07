@@ -36,7 +36,8 @@ export function set(board: Board, x: number, y: number, occ: Occupant): void {
 
 /**
  * Can place a prop at (x,y)?
- * Walls, ghosts, other props block. ignorePropId allows moving self.
+ * 空格可放；墙 / 鬼 / 其它道具不可放（PRODUCT：一格一物，鬼格禁道具）。
+ * ignorePropId：盘上挪动自己时可回到原格。
  */
 export function canPlace(
   board: Board,
@@ -47,13 +48,11 @@ export function canPlace(
   if (!inBounds(board, x, y)) return false;
   const occ = get(board, x, y);
   if (occ === null) return true;
-  if (
-    ignorePropId &&
-    occ.kind === 'prop' &&
-    occ.id === ignorePropId
-  ) {
+  // 仅允许「正在拖的这件道具」占原格；墙/鬼/别的道具一律否
+  if (occ.kind === 'prop' && ignorePropId && occ.id === ignorePropId) {
     return true;
   }
+  // wall | ghost | other prop
   return false;
 }
 

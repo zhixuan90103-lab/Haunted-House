@@ -72,6 +72,7 @@ export type DomBoardElements = {
   dragLayer: HTMLElement;
   titleEl: HTMLElement;
   hintEl: HTMLElement;
+  restartBtn: HTMLButtonElement;
 };
 
 /** Apply current BOARD/TRAY layout numbers onto shell elements. */
@@ -114,7 +115,14 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   const hintEl = document.createElement('p');
   hintEl.className = 'game-hint';
   hintEl.textContent = '从托盘拖出手电 · 点旋改朝向 · 光照显鬼';
-  hud.append(titleEl, hintEl);
+  const restartBtn = document.createElement('button');
+  restartBtn.type = 'button';
+  restartBtn.id = 'btn-restart';
+  restartBtn.className = 'game-restart-btn';
+  restartBtn.textContent = '重制';
+  restartBtn.setAttribute('aria-label', '重制本关');
+  restartBtn.title = '重制本关：鬼隐藏，道具回托盘';
+  hud.append(titleEl, hintEl, restartBtn);
 
   const boardHit = document.createElement('div');
   boardHit.id = 'board-hit';
@@ -150,6 +158,7 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
     dragLayer,
     titleEl,
     hintEl,
+    restartBtn,
   };
   applyLayoutToDom(els);
   return els;

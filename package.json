@@ -1,9 +1,9 @@
 {
-  "name": "portrait-webgpu-base",
+  "name": "haunted-house",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Robust portrait shell: TS + Three WebGPU + Vite + Capacitor iOS. Merges niantu adapt + three-webgpu-cap-shell packaging/docs/haptics workflow.",
+  "description": "Haunted House — portrait WebGPU light-path puzzle (Capacitor iOS).",
   "scripts": {
     "dev": "vite --host --port 5190",
     "build": "tsc --noEmit && vite build",

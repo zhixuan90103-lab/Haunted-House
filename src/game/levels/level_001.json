@@ -1,17 +1,18 @@
 {
   "id": "level_001",
   "title": "第一次探查",
-  "intent": "拖出手电扫光找鬼；点旋改朝向。无镜。",
+  "intent": "3 鬼 + 中心墙遮挡：扫光要绕墙探，不能只扫一角。放置时一条直线照不全，需多灯并集。无镜。",
   "board": { "width": 5, "height": 5 },
   "walls": [
     { "x": 2, "y": 2 }
   ],
   "ghosts": [
-    { "id": "g1", "x": 4, "y": 1 },
-    { "id": "g2", "x": 1, "y": 4 }
+    { "id": "g1", "x": 0, "y": 3 },
+    { "id": "g2", "x": 4, "y": 1 },
+    { "id": "g3", "x": 3, "y": 4 }
   ],
   "tray": [
     { "type": "light", "count": 3 }
   ],
-  "reference": "light at (0,1) facing E lights g1; light at (1,0) facing S toward g2 (path clear of wall at 2,2)."
+  "reference": "Wall (2,2) splits approaches. g1(0,3) left-south of wall; g2(4,1) right-north; g3(3,4) bottom-right. Scan: not collinear—must cover W, E, S zones. Place example: L(0,0)↓ lights g1 via col0; L(4,0)↓ lights g2 via col4; L(0,4)→ lights g3 via row4 (clears under wall)."
 }

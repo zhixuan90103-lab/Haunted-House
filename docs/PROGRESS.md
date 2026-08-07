@@ -77,7 +77,7 @@
 | 手感2 | 固定 K、抬升、短平滑、托盘/盘比例 | `feel/*` |
 | 拿起缩放 | 托盘→拖动尺寸；本体不随 openT 缩放 | `drag-session` · `domBoard` |
 | 吸附描边 | 放置预览 snap-ok（扫描 lit 不依赖吸附格） | `domBoard` |
-| 震动 | **S3.1 扫描会话**：开灯 tip + 跟距 continuous + 出场尖峰 + 放下停 | `feel/scan-haptics.ts` · `haptics.updateContinuous` · Swift `updateContinuousHaptic` |
+| 震动 | **S3.1 扫描会话** + 调参面板；**SceneDelegate 须用 BridgeViewController**（裸 CAPBridge 不注册插件） | `scan-haptics` · `hapticTuner` · `plugins/native-haptics` |
 
 ### 2.6 工程 / 调参
 

@@ -239,7 +239,11 @@ export function attachInput(
     if (pointerId !== null) return;
     // 调参面板不进拖拽
     const t = e.target instanceof Element ? e.target : null;
-    if (t?.closest?.('#prop-tuner, #prop-tuner-fab, .layout-tuner, .prop-tuner, .prop-tuner-fab'))
+    if (
+      t?.closest?.(
+        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #btn-restart, .game-restart-btn, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab',
+      )
+    )
       return;
 
     const layout = cb.getLayout();
