@@ -1,16 +1,26 @@
 /**
  * 光效层（扫描 + 放置发射）
  *
- * 设计：
- * - 显示：连接 light-beam.png + 光斑 light-glow.png + 可落格 snap-frame.png
- * - 扫描/可放预览：beam/glow **始终跟手**（designX/Y）；长度按吸附格光路算
- * - 放置：盘上每盏 light 发射 beam + 前方 glow（openT=1，锚格心）
+ * 设计（A1）：
+ * - **拖灯全程同一套跟手照射**：beam/glow 锚 designX/Y，长度 = 朝向障碍/盘边
+ * - 未找全鬼：短距 cap（glowForward）；找全后：可照到墙/盘边（不因吸附硬切另一套）
+ * - 可放：仅多 snap 框；落盘后才切「格心放置光」
  * - 全 design canvas；mix-blend-mode: plus-lighter → 对背景 Additive
- * - 位置/尺寸只读 VIEW_STYLE
  */
 
-import { BOARD_LAYOUT, cellSize, cellToDesignCenter } from '../layout';
-import { DELTA, Dir, type DirValue, type DragGhost } from '../types';
+import {
+  BOARD_LAYOUT,
+  cellSize,
+  cellToDesignCenter,
+  designToCell,
+} from '../layout';
+import {
+  DELTA,
+  Dir,
+  type DirValue,
+  type DragGhost,
+  type Occupant,
+} from '../types';
 import { VIEW_STYLE } from '../viewStyle';
 
 const LIGHT_GLOW_SRC = './light-glow.png';
@@ -159,58 +169,67 @@ export function freeBeamSpotWithLengthPx(
 }
 
 /**
- * 可放预览：光斑最远语义 = 光学第一段尽头格心（落盘时同位置）。
- * 返回该格；无路径返回 null。
+ * A1 跟手照射长度（px）：从灯心沿 facing 走到墙/道具/盘边。
+ * - longRange=false：再 cap 到 glowForward×格（扫描找鬼）
+ * - longRange=true：可照满空列，随手连续变，不因吸附格换算法
  */
-export function pathFirstEndCell(path: {
-  segments: Array<{ fromX: number; fromY: number; toX: number; toY: number }>;
-  end: { x: number; y: number } | null;
-}): { x: number; y: number } | null {
-  if (path.segments.length > 0) {
-    const s0 = path.segments[0]!;
-    return { x: s0.toX, y: s0.toY };
-  }
-  if (path.end) return { x: path.end.x, y: path.end.y };
-  return null;
-}
-
-/**
- * 手电 → 尽头格心 沿 facing 的前移距离（≥0）。
- * 光斑 = 手电 + facing×此长度（跟手、不吸格）；
- * 手电在灯格心时 ≈ 落盘光斑位置，最远为盘内尽头格心，不会按 scale 拉出盘外。
- */
-export function beamLengthTowardEndCell(
-  lightX: number,
-  lightY: number,
-  facing: number,
-  endCell: { x: number; y: number } | null,
-): number | null {
-  if (!endCell) return null;
-  const end = cellToDesignCenter(endCell.x, endCell.y);
+export function freeShineLengthPx(opts: {
+  lightX: number;
+  lightY: number;
+  facing: number;
+  width: number;
+  height: number;
+  get: (x: number, y: number) => Occupant;
+  longRange: boolean;
+}): number {
+  const { lightX, lightY, facing, width, height, get, longRange } = opts;
+  const cs = cellSize();
+  const shortCap = cs * Math.max(0.25, VIEW_STYLE.glowForward);
   const f = ((facing % 4) + 4) % 4;
   const fwd = DELTA[f as Dir] ?? DELTA[Dir.N];
-  // 投影到朝向：手在下方朝上时 length = 手Y→尽头Y
-  const len =
-    (end.dx - lightX) * fwd.dx + (end.dy - lightY) * fwd.dy;
-  return Math.max(0, len);
-}
 
-/** 可放拖灯：连接/光斑共用长度 */
-export function dragPlaceableBeamLengthPx(
-  path: {
-    segments: Array<{ fromX: number; fromY: number; toX: number; toY: number }>;
-    end: { x: number; y: number } | null;
-  },
-  lightX: number,
-  lightY: number,
-  facing: number,
-): number | null {
-  return beamLengthTowardEndCell(
-    lightX,
-    lightY,
-    facing,
-    pathFirstEndCell(path),
-  );
+  const { left, top, size } = BOARD_LAYOUT;
+  let edgeMax = 0;
+  if (fwd.dx > 0) edgeMax = left + size - lightX;
+  else if (fwd.dx < 0) edgeMax = lightX - left;
+  else if (fwd.dy > 0) edgeMax = top + size - lightY;
+  else if (fwd.dy < 0) edgeMax = lightY - top;
+  edgeMax = Math.max(0, edgeMax);
+
+  const start = designToCell(lightX, lightY);
+  let envLen = Math.min(shortCap, edgeMax);
+
+  if (start) {
+    let x = start.x;
+    let y = start.y;
+    let lastEnd: { x: number; y: number } | null = null;
+    for (;;) {
+      const nx = x + fwd.dx;
+      const ny = y + fwd.dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) break;
+      const occ = get(nx, ny);
+      if (occ?.kind === 'wall') break;
+      if (occ?.kind === 'prop') {
+        lastEnd = { x: nx, y: ny };
+        break;
+      }
+      // 空 / 鬼：可穿透继续
+      lastEnd = { x: nx, y: ny };
+      x = nx;
+      y = ny;
+    }
+    if (lastEnd) {
+      const end = cellToDesignCenter(lastEnd.x, lastEnd.y);
+      const proj =
+        (end.dx - lightX) * fwd.dx + (end.dy - lightY) * fwd.dy;
+      envLen = Math.max(0, Math.min(proj, edgeMax));
+    } else {
+      envLen = Math.min(shortCap, edgeMax);
+    }
+  }
+
+  if (!longRange) return Math.min(envLen, shortCap);
+  return envLen;
 }
 
 /**
@@ -479,43 +498,6 @@ function paintPlacedLight(
   });
 }
 
-/**
- * 拖灯可放预览：连接/光斑跟手、沿 facing、不朝格心吸附；
- * 仅长度取自光路；镜后折线段仍在格上。
- */
-function paintDragPreviewLight(
-  ctx: CanvasRenderingContext2D,
-  lightX: number,
-  lightY: number,
-  facing: DirValue,
-  path: PlacedLightFx,
-  freeGlows: FreeGlow[],
-  cell: number,
-  openT: number,
-  beamLengthPx: number | null,
-): void {
-  const t = Math.max(0, Math.min(1, openT));
-  if (t <= 0.001) return;
-
-  // 第一段：沿 facing 连续长度（不 paintBeamToEnd 朝格心）
-  if (beamLengthPx != null && beamLengthPx > 1) {
-    paintBeam(ctx, lightX, lightY, facing, cell, t, beamLengthPx);
-  } else {
-    paintBeam(ctx, lightX, lightY, facing, cell, t);
-  }
-
-  // 镜后折线：格心→格心
-  for (let i = 1; i < path.segments.length; i++) {
-    const seg = path.segments[i]!;
-    const from = cellToDesignCenter(seg.fromX, seg.fromY);
-    const to = cellToDesignCenter(seg.toX, seg.toY);
-    paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, t);
-  }
-
-  // 光斑跟手、无格吸附
-  paintGlow(ctx, freeGlows, cell, t);
-}
-
 /** 镜后折线段：格心→格心，无灯头 offset */
 function paintBeamSegmentCenters(
   ctx: CanvasRenderingContext2D,
@@ -591,38 +573,35 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
       paintPlacedLight(ctx, L, cell, 1);
     }
 
-    // 2) 拖灯：连接/光斑跟手；可放时长度 = 手电→光学尽头格心
+    // 2) 拖灯 A1：始终跟手一套；可放只加 snap；长度已在 freeGlows 里
     if (scanning && drag) {
-      if (drag.cell && previewLight) {
+      if (drag.cell) {
         paintSnapFrame(ctx, drag.cell.x, drag.cell.y, cell);
-        const lenPx = dragPlaceableBeamLengthPx(
-          {
-            segments: previewLight.segments,
-            end:
-              previewLight.endX != null && previewLight.endY != null
-                ? { x: previewLight.endX, y: previewLight.endY }
-                : null,
-          },
-          drag.designX,
-          drag.designY,
-          drag.facing,
-        );
-        paintDragPreviewLight(
-          ctx,
-          drag.designX,
-          drag.designY,
-          drag.facing,
-          previewLight,
-          freeGlows,
-          cell,
-          openT,
-          lenPx,
-        );
-      } else {
-        paintBeam(ctx, drag.designX, drag.designY, drag.facing, cell, openT);
-        paintGlow(ctx, freeGlows, cell, openT);
       }
+      // 连接长度 = 灯心→光斑（与 freeGlow 一致）
+      let beamLen: number | undefined;
+      const g0 = freeGlows[0];
+      if (g0) {
+        const f = ((drag.facing % 4) + 4) % 4;
+        const fwd = DELTA[f as Dir] ?? DELTA[Dir.N];
+        beamLen =
+          (g0.designX - drag.designX) * fwd.dx +
+          (g0.designY - drag.designY) * fwd.dy;
+        if (beamLen < 1) beamLen = undefined;
+      }
+      paintBeam(
+        ctx,
+        drag.designX,
+        drag.designY,
+        drag.facing,
+        cell,
+        openT,
+        beamLen,
+      );
+      paintGlow(ctx, freeGlows, cell, openT);
     }
+    // previewLight 仅逻辑/落盘用，拖灯绘制不读（A1）
+    void previewLight;
 
     ctx.filter = 'none';
     ctx.globalAlpha = 1;

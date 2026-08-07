@@ -51,9 +51,8 @@ import {
 } from './view/domBoard';
 import { startGhostIdleLoop } from './view/ghostIdle';
 import {
-  dragPlaceableBeamLengthPx,
-  freeBeamSpot,
   freeBeamSpotWithLengthPx,
+  freeShineLengthPx,
   mountLightFx,
   type FreeGlow,
   type LightFxHandle,
@@ -172,13 +171,32 @@ function resolve(
   rt.freeGlows = [];
   rt.previewLight = null;
 
-  // —— 拖动手电 ——
+  // —— 拖动手电（A1：视觉全程同一套跟手照射）——
   if (rt.drag?.type === 'light') {
     const drag = rt.drag;
     const ghostsPrev = rt.ghosts;
+    const longRange = allGhostsFound(rt.ghosts);
 
-    // 可放格：光学按吸附格算路径/长度；连接+光斑仍锚在手上（designX/Y）
-    if (drag.cell) {
+    // 光斑/连接：跟手；长度 = 朝向障碍（找全前短距 cap，找全后可照远）
+    const lenPx = freeShineLengthPx({
+      lightX: drag.designX,
+      lightY: drag.designY,
+      facing: drag.facing,
+      width: rt.board.width,
+      height: rt.board.height,
+      get: getOcc,
+      longRange,
+    });
+    const spot = freeBeamSpotWithLengthPx(
+      drag.designX,
+      drag.designY,
+      drag.facing,
+      lenPx,
+    );
+    rt.freeGlows = [spot];
+
+    // 逻辑 lit：可吸附时按落点格完整光路；否则按光斑所在格扫描
+    if (drag.cell && longRange) {
       const { x, y } = drag.cell;
       const facing = drag.facing as Dir;
       const path = castReflectingLightPath(
@@ -198,26 +216,6 @@ function resolve(
         endY: path.end?.y ?? null,
         litCount: path.litCells.length,
       };
-
-      // 光斑跟手；长度 = 手电→光学尽头格心（最远=盘内该格中心，连接同距）
-      const lenPx = dragPlaceableBeamLengthPx(
-        path,
-        drag.designX,
-        drag.designY,
-        drag.facing,
-      );
-      rt.freeGlows = [
-        lenPx != null
-          ? freeBeamSpotWithLengthPx(
-              drag.designX,
-              drag.designY,
-              drag.facing,
-              lenPx,
-            )
-          : freeBeamSpot(drag.designX, drag.designY, drag.facing),
-      ];
-
-      // 逻辑 lit = 其它已放灯 + 预览灯（仍用吸附格）
       const lights = collectLightsFromGet(
         rt.board.width,
         rt.board.height,
@@ -233,23 +231,15 @@ function resolve(
       rt.lit = lit;
       rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
       maybeUnlockTray(rt);
-
-      const spotCell =
-        path.end != null
-          ? { x: path.end.x, y: path.end.y }
-          : { x, y };
       scanHaptics.onScanFrame({
-        spotCell,
+        spotCell:
+          path.end != null ? { x: path.end.x, y: path.end.y } : { x, y },
         ghostsPrev,
         ghosts: rt.ghosts,
         nowMs,
       });
       return;
     }
-
-    // 无吸附：短连接 + 固定前移光斑（仍跟手）
-    const spot = freeBeamSpot(drag.designX, drag.designY, drag.facing);
-    rt.freeGlows = [spot];
 
     const lit = new Set<string>();
     const cell = designToCell(spot.designX, spot.designY);
