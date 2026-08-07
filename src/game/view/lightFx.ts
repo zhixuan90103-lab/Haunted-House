@@ -32,15 +32,21 @@ snapImg.src = SNAP_FRAME_SRC;
 
 export type FreeGlow = { designX: number; designY: number };
 
-/** 盘上已放置的光源 + 直线最远亮格（供发射长度 / 光斑） */
+/** 盘上已放置的光源 + 折线路径（含镜） */
 export type PlacedLightFx = {
   x: number;
   y: number;
   facing: DirValue;
-  /** 最远被照亮格；null = 正前方无通路（贴墙） */
+  /** 折线段（格点：灯/镜 → 尽头亮格或下一镜） */
+  segments: Array<{
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+  }>;
+  /** 光斑：最后一段尽头亮格 */
   endX: number | null;
   endY: number | null;
-  /** 亮格数量（0 = 无发射） */
   litCount: number;
 };
 
@@ -307,34 +313,84 @@ function paintSnapFrame(
 }
 
 /**
- * 放置态：直线打到最远亮格（无障碍 = 棋盘边界内最远）；
- * beam 跨灯心→尽头，光斑在最远格心。
+ * 放置态：折线段 beam（可经镜）+ 尽头光斑。
+ * 首段锚用 light 的 facing 偏移；续段从镜格心出发（offset 0）。
  */
 function paintPlacedLight(
   ctx: CanvasRenderingContext2D,
   light: PlacedLightFx,
   cell: number,
 ): void {
-  if (
-    light.litCount <= 0 ||
-    light.endX == null ||
-    light.endY == null
-  ) {
-    return;
+  if (light.segments.length === 0) return;
+
+  for (let i = 0; i < light.segments.length; i++) {
+    const seg = light.segments[i]!;
+    const from = cellToDesignCenter(seg.fromX, seg.fromY);
+    const to = cellToDesignCenter(seg.toX, seg.toY);
+    // 推算本段朝向（用于灯头锚点旋转；续段 from 是镜，offset 仍按朝向转）
+    const fdx = seg.toX - seg.fromX;
+    const fdy = seg.toY - seg.fromY;
+    let facing = light.facing;
+    if (Math.abs(fdx) + Math.abs(fdy) > 0) {
+      if (fdx > 0) facing = 1;
+      else if (fdx < 0) facing = 3;
+      else if (fdy > 0) facing = 2;
+      else facing = 0;
+    }
+    // 仅首段用「放下连接偏移」；镜后段从镜心出，offset 用 0 避免二次外推
+    if (i === 0) {
+      paintBeamToEnd(
+        ctx,
+        from.dx,
+        from.dy,
+        to.dx,
+        to.dy,
+        facing as DirValue,
+        cell,
+        1,
+      );
+    } else {
+      paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, 1);
+    }
   }
-  const from = cellToDesignCenter(light.x, light.y);
-  const to = cellToDesignCenter(light.endX, light.endY);
-  paintBeamToEnd(
+
+  if (light.endX != null && light.endY != null) {
+    const to = cellToDesignCenter(light.endX, light.endY);
+    paintGlow(ctx, [{ designX: to.dx, designY: to.dy }], cell, 1);
+  }
+}
+
+/** 镜后折线段：格心→格心，无灯头 offset */
+function paintBeamSegmentCenters(
+  ctx: CanvasRenderingContext2D,
+  lightX: number,
+  lightY: number,
+  endX: number,
+  endY: number,
+  cell: number,
+  openT: number,
+): void {
+  if (!beamImg.complete || beamImg.naturalWidth <= 0) return;
+  const t = Math.max(0, Math.min(1, openT));
+  if (t <= 0.001) return;
+  const dx = endX - lightX;
+  const dy = endY - lightY;
+  const fullLen = Math.hypot(dx, dy);
+  if (fullLen < 1) return;
+  const scale = Math.max(0.05, VIEW_STYLE.beamPlacedLengthScale / 100);
+  const length = fullLen * scale;
+  const thickness =
+    cell * Math.max(0.05, VIEW_STYLE.beamPlacedWidth / 100) * t;
+  const ang = Math.atan2(dy, dx) + Math.PI / 2;
+  paintBeamFromPivot(
     ctx,
-    from.dx,
-    from.dy,
-    to.dx,
-    to.dy,
-    light.facing,
-    cell,
-    1,
+    lightX,
+    lightY,
+    ang,
+    thickness,
+    length,
+    VIEW_STYLE.beamAlpha,
   );
-  paintGlow(ctx, [{ designX: to.dx, designY: to.dy }], cell, 1);
 }
 
 /**

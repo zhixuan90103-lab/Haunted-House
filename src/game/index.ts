@@ -17,7 +17,7 @@ import { loadLevel, returnToTray, takeFromTray, type LoadedLevel } from './level
 import level001 from './levels/level_001.json';
 import { designToCell } from './layout';
 import {
-  castStraightLightPath,
+  castReflectingLightPath,
   collectLightsFromGet,
   computeLit,
 } from './optics';
@@ -198,7 +198,7 @@ function resolve(
   rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
 }
 
-/** 盘上 light 发射列表；含直线最远亮格。拖起中的灯排除。 */
+/** 盘上 light 发射列表；折线（含镜）。拖起中的灯排除。 */
 function collectPlacedLightFx(
   board: Board,
   hidePropId?: string,
@@ -210,7 +210,7 @@ function collectPlacedLightFx(
       const occ = get(board, x, y);
       if (occ?.kind !== 'prop' || occ.type !== 'light') continue;
       if (hidePropId && occ.id === hidePropId) continue;
-      const path = castStraightLightPath(
+      const path = castReflectingLightPath(
         board.width,
         board.height,
         getOcc,
@@ -222,6 +222,7 @@ function collectPlacedLightFx(
         x,
         y,
         facing: occ.facing as DirValue,
+        segments: path.segments,
         endX: path.end?.x ?? null,
         endY: path.end?.y ?? null,
         litCount: path.litCells.length,

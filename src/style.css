@@ -427,6 +427,7 @@ button:active {
   outline: none;
 }
 
+
 #ui-root.game-ui.debug-grid .cell {
   border: 1px solid rgba(56, 189, 248, 0.45);
   background: rgba(15, 23, 42, 0.08);
@@ -474,13 +475,15 @@ button:active {
   z-index: 3;
 }
 
-/* 盘上手电：left/top/margin/宽高由 paintOccupant 写 px，格心锚定 */
-.prop-sprite[data-prop-type='light'].prop-on-board {
+/* 盘上手电 / 镜：left/top/宽高由 JS 写 px（镜与投影共用 mirrorBoardLayout） */
+.prop-sprite[data-prop-type='light'].prop-on-board,
+.prop-sprite.prop-mirror-on-board {
   position: absolute;
   flex-shrink: 0;
   z-index: 5;
   pointer-events: none;
   box-sizing: border-box;
+  margin: 0;
 }
 
 /* 拖拽层手电：尺寸由 inline px；托盘走 tray 规则 */
@@ -626,7 +629,10 @@ button:active {
   touch-action: none;
 }
 
-/* Tray chrome off — only prop sprites visible；槽位平均分布 */
+/**
+ * 托盘容器：只做 flex 排布，尺寸来自 TRAY_LAYOUT（JS 写 left/top/width/height）。
+ * 图标大小仅 --prop-tray-slot-size，与拿起/投影无关。
+ */
 .game-tray.game-tray-bare {
   background: transparent;
   border: 0;
@@ -636,24 +642,33 @@ button:active {
   border-radius: 0;
   display: flex;
   align-items: center;
-  justify-content: space-evenly;
-  gap: 0;
+  justify-content: center;
+  gap: var(--prop-tray-gap, 8px);
+  overflow: visible;
+  box-sizing: border-box;
 }
 
 .game-tray.game-tray-bare .tray-item {
   background: transparent;
   border: 0;
   box-shadow: none;
-  /* 点击区略大于半尺寸精灵，手感2：托盘=半、拿起=满 */
-  width: var(--prop-tray-size, 56px);
-  height: var(--prop-tray-size, 56px);
+  /* 布局占位 = 图标本身，不被 hitPad 撑破三槽 */
+  width: var(--prop-tray-slot-size, 56px);
+  height: var(--prop-tray-slot-size, 56px);
   padding: 0;
+  margin: 0;
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
 }
 
 .game-tray.game-tray-bare .tray-item .prop-sprite {
   width: 100%;
   height: 100%;
+  flex: 0 0 auto;
+  pointer-events: none;
 }
 
 .game-tray.game-tray-bare .tray-label,
@@ -719,6 +734,14 @@ button:active {
   z-index: 20;
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.55));
   opacity: 1 !important;
+  will-change: left, top;
+}
+
+/* 镜拿起：格上斜置投影（在本体下方，类比手电吸附框） */
+.drag-mirror-projection {
+  position: absolute;
+  pointer-events: none;
+  z-index: 18;
   will-change: left, top;
 }
 

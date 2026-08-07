@@ -267,9 +267,10 @@ function restart():
 
 - 完整 `computeLit` 直线布光；多 light 并集。  
 - **发射表现：** 盘上每盏 light 在 `board-light-canvas`：  
-  - 直线 `castStraightLightPath`：空/鬼继续，墙/道具挡，出界止 → **无障碍则到棋盘内最远格**  
-  - beam 从灯心拉到最远亮格心；**光斑在最远格心**（非固定 glowForward）  
-  - 拖起中的灯不画放置发射；贴脸墙（0 亮格）不画  
+  - `castReflectingLightPath`：空/鬼继续，墙挡，**镜 90° 折**（与 computeLit 同表），其它道具挡  
+  - 折线 segments 画 beam；**光斑在最后一段尽头亮格**  
+  - 拖起中的灯不画放置发射；无通路不画  
+- **镜：** 托盘/拿起 `prop-mirror-tray.png`；盘上 `prop-mirror-board.png` + facing 点旋  
 - 格 lit 标记可选（当前透明）。
 
 ### R11.3 鬼表现

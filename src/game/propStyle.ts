@@ -1,37 +1,66 @@
-/** Mutable prop visual params (tuned live, then bake into defaults). */
+/**
+ * 道具外观参数 — 四层互不耦合
+ *
+ * 1. **托盘容器** → `layout.TRAY_LAYOUT`（left/top/width/height）只定容器框
+ * 2. **托盘图标** → `traySlotScale` 只定槽内图标边长（% 格），不读拿起/盘上
+ * 3. **拿起本体** → `*Lift*` 只定拖影跟手（镜=立式图）
+ * 4. **盘上 / 投影** → `*Placed*` + `mirrorProjectionAlpha`（镜=斜置图；投影透明度独立）
+ *
+ * 手电 light* 数据保留，调参面板可隐藏。
+ */
 
 export type PropStyle = {
-  /** Board cell sprite scale % (100 = fill cell); non-light props */
+  /** 非 light/mirror 盘上 fallback % 格 */
   boardScale: number;
-  /**
-   * 手电拿起/拖动边长：相对格边 %（100 = 一格宽）
-   * 实际 px = cellSize × lightLiftScale / 100
-   */
+
+  // ── ② 托盘图标（仅托盘槽视觉，与容器布局数字无关）──
+  /** 托盘内图标边长，相对格边 %（100=一格） */
+  traySlotScale: number;
+
+  // ── 手电（面板可隐藏）──
   lightLiftScale: number;
-  /**
-   * 手电放下（盘上）边长：相对格边 %（100 = 一格宽）
-   * 实际 px = cellSize × lightPlacedScale / 100
-   */
   lightPlacedScale: number;
-  /**
-   * Extra CSS degrees after dir mapping.
-   * Asset faces East at 0°; Dir.N → -90° before this offset.
-   */
   rotateOffset: number;
-  /** Default facing when pulling from tray (0=N,1=E,2=S,3=W) */
   defaultFacing: 0 | 1 | 2 | 3;
-  /** Tray display facing */
   trayFacing: 0 | 1 | 2 | 3;
+
+  // ── ③ 镜子 · 拿起本体（立式 tray 图，跟手）──
+  mirrorLiftScale: number;
+  mirrorLiftOffsetX: number;
+  mirrorLiftOffsetY: number;
+
+  // ── ④ 镜子 · 盘上精灵 + 拿起时格上投影（斜置 board 图）──
+  mirrorPlacedScale: number;
+  mirrorPlacedOffsetX: number;
+  mirrorPlacedOffsetY: number;
+  /** 拿起时格上投影透明度 0–1（盘上已放下仍用 1） */
+  mirrorProjectionAlpha: number;
+  mirrorRotateOffset: number;
+  mirrorDefaultFacing: 0 | 1 | 2 | 3;
 };
 
 export const PROP_STYLE: PropStyle = {
   boardScale: 96,
-  /** 调参定稿 2026-08（面板：拿起 220 / 放下 200） */
+
+  // 调参定稿 2026-08
+  traySlotScale: 180,
+
   lightLiftScale: 220,
   lightPlacedScale: 200,
   rotateOffset: 180,
-  defaultFacing: 0, // 0=N 1=E 2=S 3=W
+  defaultFacing: 0,
   trayFacing: 0,
+
+  mirrorLiftScale: 250,
+  mirrorLiftOffsetX: 0,
+  mirrorLiftOffsetY: -20,
+
+  mirrorPlacedScale: 130,
+  mirrorPlacedOffsetX: 0,
+  mirrorPlacedOffsetY: 0,
+  mirrorProjectionAlpha: 0.5,
+  mirrorRotateOffset: 0,
+  mirrorDefaultFacing: 0,
 };
 
 export const DEFAULT_PROP_STYLE: PropStyle = { ...PROP_STYLE };
@@ -48,23 +77,58 @@ export function propStyleSnapshot(): string {
   const p = PROP_STYLE;
   return [
     `PROP_STYLE:`,
+    `  // ① 托盘容器 → layout.TRAY_LAYOUT`,
+    `  // ② 托盘图标`,
+    `  traySlotScale: ${p.traySlotScale},`,
+    `  // ③ 拿起本体`,
+    `  mirrorLiftScale: ${p.mirrorLiftScale},`,
+    `  mirrorLiftOffsetX: ${p.mirrorLiftOffsetX},`,
+    `  mirrorLiftOffsetY: ${p.mirrorLiftOffsetY},`,
+    `  // ④ 盘上/投影`,
+    `  mirrorPlacedScale: ${p.mirrorPlacedScale},`,
+    `  mirrorPlacedOffsetX: ${p.mirrorPlacedOffsetX},`,
+    `  mirrorPlacedOffsetY: ${p.mirrorPlacedOffsetY},`,
+    `  mirrorProjectionAlpha: ${p.mirrorProjectionAlpha},`,
+    `  mirrorRotateOffset: ${p.mirrorRotateOffset},`,
+    `  mirrorDefaultFacing: ${p.mirrorDefaultFacing},`,
+    `  // 手电（隐藏调参）`,
+    `  lightLiftScale: ${p.lightLiftScale},`,
+    `  lightPlacedScale: ${p.lightPlacedScale},`,
     `  boardScale: ${p.boardScale},`,
-    `  lightLiftScale: ${p.lightLiftScale}, // 拿起 % of cell`,
-    `  lightPlacedScale: ${p.lightPlacedScale}, // 放下 % of cell`,
-    `  rotateOffset: ${p.rotateOffset},`,
-    `  defaultFacing: ${p.defaultFacing}, // 0=N 1=E 2=S 3=W`,
-    `  trayFacing: ${p.trayFacing},`,
   ].join('\n');
 }
 
-/** 放下尺寸：格边百分比（已 clamp） */
 export function lightPlacedScalePercent(): number {
   return Math.max(40, PROP_STYLE.lightPlacedScale);
 }
 
-/** 拿起尺寸：格边百分比（已 clamp） */
 export function lightLiftScalePercent(): number {
   return Math.max(40, PROP_STYLE.lightLiftScale);
+}
+
+export function mirrorPlacedScalePercent(): number {
+  return Math.max(40, PROP_STYLE.mirrorPlacedScale);
+}
+
+export function mirrorLiftScalePercent(): number {
+  return Math.max(40, PROP_STYLE.mirrorLiftScale);
+}
+
+export function traySlotScalePercent(): number {
+  return Math.max(30, PROP_STYLE.traySlotScale);
+}
+
+/** 拖影尺寸：只读拿起，不读托盘 */
+export function propLiftScalePercent(type: string): number {
+  if (type === 'light') return lightLiftScalePercent();
+  if (type === 'mirror') return mirrorLiftScalePercent();
+  return Math.max(40, PROP_STYLE.boardScale);
+}
+
+export function propPlacedScalePercent(type: string): number {
+  if (type === 'light') return lightPlacedScalePercent();
+  if (type === 'mirror') return mirrorPlacedScalePercent();
+  return Math.max(40, PROP_STYLE.boardScale);
 }
 
 export function applyPropStyleCss(
@@ -77,7 +141,7 @@ export function applyPropStyleCss(
     `${lightPlacedScalePercent()}%`,
   );
   root.style.setProperty(
-    '--prop-light-lift-scale',
-    `${lightLiftScalePercent()}%`,
+    '--prop-mirror-board-scale',
+    `${mirrorPlacedScalePercent()}%`,
   );
 }

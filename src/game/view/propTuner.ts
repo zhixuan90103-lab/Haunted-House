@@ -48,31 +48,70 @@ type SliderDef =
   | { group: 'view'; key: keyof ViewStyle; label: string; min: number; max: number; step: number };
 
 const SECTION_TITLE: Record<Group, string> = {
-  prop: '外观·拿起',
+  prop: '外观·镜子',
   feel: '手感2',
   board: '棋盘布局',
   tray: '托盘布局',
   view: '表现·调试',
 };
 
-const SLIDERS: SliderDef[] = [
-  // —— 外观 / 手电尺寸（% 相对格边，100 = 一格）——
-  { group: 'prop', key: 'boardScale', label: '其它道具盘上%', min: 40, max: 160, step: 1 },
-  { group: 'prop', key: 'lightLiftScale', label: '手电拿起%', min: 50, max: 320, step: 1 },
-  { group: 'prop', key: 'lightPlacedScale', label: '手电放下%', min: 40, max: 320, step: 1 },
-  { group: 'prop', key: 'rotateOffset', label: '旋转偏移°', min: -180, max: 180, step: 1 },
-  { group: 'prop', key: 'defaultFacing', label: '默认朝向', min: 0, max: 3, step: 1 },
-  { group: 'prop', key: 'trayFacing', label: '托盘朝向', min: 0, max: 3, step: 1 },
+/**
+ * 手电相关：数据层保留，面板暂时隐藏（调镜期不干扰）
+ * 含 light* / 光斑连接 / 开灯时长 等
+ */
+const HIDDEN_KEYS = new Set<string>([
+  'lightLiftScale',
+  'lightPlacedScale',
+  'rotateOffset',
+  'defaultFacing',
+  'trayFacing',
+  'trayHitPad', // 已废弃：布局不再用 hit 撑宽
+  'LIGHT_OPEN_MS',
+  'TRAY_SCALE',
+  'glowSize',
+  'glowAlpha',
+  'glowForward',
+  'glowSide',
+  'glowOffsetX',
+  'glowOffsetY',
+  'beamWidth',
+  'beamLength',
+  'beamOffsetX',
+  'beamOffsetY',
+  'beamPlacedWidth',
+  'beamPlacedLengthScale',
+  'beamPlacedOffsetX',
+  'beamPlacedOffsetY',
+  'beamAlpha',
+  'snapAlpha',
+  'snapSize',
+]);
 
-  // —— 手感2 ——
+const SLIDERS: SliderDef[] = [
+  // ② 托盘图标（容器在「托盘布局」）
+  { group: 'prop', key: 'traySlotScale', label: '②托盘图标%', min: 40, max: 220, step: 1 },
+
+  // ③ 拿起本体
+  { group: 'prop', key: 'mirrorLiftScale', label: '③镜子拿起%', min: 50, max: 320, step: 1 },
+  { group: 'prop', key: 'mirrorLiftOffsetX', label: '③拿起偏移X', min: -80, max: 80, step: 1 },
+  { group: 'prop', key: 'mirrorLiftOffsetY', label: '③拿起偏移Y', min: -80, max: 80, step: 1 },
+
+  // ④ 盘上 / 投影
+  { group: 'prop', key: 'mirrorPlacedScale', label: '④盘上/投影%', min: 40, max: 220, step: 1 },
+  { group: 'prop', key: 'mirrorPlacedOffsetX', label: '④投影偏移X', min: -40, max: 40, step: 1 },
+  { group: 'prop', key: 'mirrorPlacedOffsetY', label: '④投影偏移Y', min: -40, max: 40, step: 1 },
+  { group: 'prop', key: 'mirrorProjectionAlpha', label: '④投影透明度', min: 0, max: 1, step: 0.02 },
+  { group: 'prop', key: 'mirrorRotateOffset', label: '④镜子旋转偏移°', min: -180, max: 180, step: 1 },
+  { group: 'prop', key: 'mirrorDefaultFacing', label: '镜子默认朝向', min: 0, max: 3, step: 1 },
+  { group: 'prop', key: 'boardScale', label: '其它道具盘上%', min: 40, max: 160, step: 1 },
+
+  // —— 手感2（通用跟手，非托盘尺寸）——
   { group: 'feel', key: 'POINTER_GAIN_K', label: '跟手倍率K', min: 0.6, max: 2.8, step: 0.05 },
   { group: 'feel', key: 'DRAG_OFFSET_Y', label: '抬升Y(格)', min: -5, max: 0.5, step: 0.1 },
   { group: 'feel', key: 'DRAG_OFFSET_X', label: '偏移X(格)', min: -2, max: 2, step: 0.1 },
-  { group: 'feel', key: 'TRAY_SCALE', label: '托盘尺度', min: 0.25, max: 1.2, step: 0.05 },
   { group: 'feel', key: 'BOARD_SCALE', label: '盘上尺度', min: 0.6, max: 1.4, step: 0.05 },
   { group: 'feel', key: 'DRAG_SCALE_POP', label: '拿起pop×', min: 0.7, max: 2.0, step: 0.02 },
   { group: 'feel', key: 'SCALE_POP_MS', label: '放大时长ms', min: 0, max: 300, step: 5 },
-  { group: 'feel', key: 'LIGHT_OPEN_MS', label: '开灯时长ms', min: 40, max: 300, step: 5 },
   { group: 'feel', key: 'SMOOTH_TIME', label: '平滑(秒)', min: 0, max: 0.1, step: 0.002 },
   { group: 'feel', key: 'DRAG_LIFT_TRAVEL_CELLS', label: '抬升行程', min: 0.5, max: 8, step: 0.1 },
   { group: 'feel', key: 'DRAG_LIFT_POWER', label: '抬升曲线', min: 0.5, max: 3, step: 0.05 },
@@ -83,29 +122,13 @@ const SLIDERS: SliderDef[] = [
   { group: 'board', key: 'size', label: '棋盘 size', min: 200, max: 380, step: 1 },
   { group: 'board', key: 'padding', label: '内边距', min: 0, max: 40, step: 1 },
 
-  // —— 托盘 ——
-  { group: 'tray', key: 'left', label: '托盘 left', min: 0, max: 120, step: 1 },
-  { group: 'tray', key: 'top', label: '托盘 top', min: 400, max: 800, step: 1 },
-  { group: 'tray', key: 'width', label: '托盘 width', min: 120, max: 390, step: 1 },
-  { group: 'tray', key: 'height', label: '托盘 height', min: 48, max: 160, step: 1 },
+  // ① 托盘容器（与图标%无关）
+  { group: 'tray', key: 'left', label: '①容器 left', min: 0, max: 120, step: 1 },
+  { group: 'tray', key: 'top', label: '①容器 top', min: 400, max: 800, step: 1 },
+  { group: 'tray', key: 'width', label: '①容器 width', min: 120, max: 390, step: 1 },
+  { group: 'tray', key: 'height', label: '①容器 height', min: 48, max: 200, step: 1 },
 
-  // —— 表现：光斑 ——
-  { group: 'view', key: 'glowSize', label: '光斑大小%', min: 60, max: 280, step: 5 },
-  { group: 'view', key: 'glowAlpha', label: '光斑透明度', min: 0, max: 1, step: 0.02 },
-  { group: 'view', key: 'glowForward', label: '光斑前移(格)', min: -1.5, max: 3, step: 0.05 },
-  { group: 'view', key: 'glowSide', label: '光斑侧移(格)', min: -1.5, max: 1.5, step: 0.05 },
-  { group: 'view', key: 'glowOffsetX', label: '光斑偏移Xpx', min: -80, max: 80, step: 1 },
-  { group: 'view', key: 'glowOffsetY', label: '光斑偏移Ypx', min: -80, max: 80, step: 1 },
-  // —— 表现：连接（纯显示：宽、长、位置、透明度）——
-  { group: 'view', key: 'beamWidth', label: '拿起连接宽度%', min: 10, max: 250, step: 5 },
-  { group: 'view', key: 'beamLength', label: '拿起连接长度%', min: 10, max: 300, step: 5 },
-  { group: 'view', key: 'beamOffsetX', label: '拿起连接X', min: -120, max: 120, step: 1 },
-  { group: 'view', key: 'beamOffsetY', label: '拿起连接Y', min: -120, max: 120, step: 1 },
-  { group: 'view', key: 'beamPlacedWidth', label: '放下连接宽度%', min: 10, max: 300, step: 5 },
-  { group: 'view', key: 'beamPlacedLengthScale', label: '放下连接长度%', min: 20, max: 250, step: 1 },
-  { group: 'view', key: 'beamPlacedOffsetX', label: '放下连接X', min: -120, max: 120, step: 1 },
-  { group: 'view', key: 'beamPlacedOffsetY', label: '放下连接Y', min: -120, max: 120, step: 1 },
-  { group: 'view', key: 'beamAlpha', label: '连接透明度', min: 0, max: 1, step: 0.02 },
+  // —— 表现：鬼 / HUD（手电光效已隐藏）——
   { group: 'view', key: 'ghostSize', label: '鬼大小%', min: 40, max: 200, step: 2 },
   { group: 'view', key: 'ghostOffsetX', label: '鬼位置X', min: -40, max: 40, step: 1 },
   { group: 'view', key: 'ghostOffsetY', label: '鬼位置Y', min: -40, max: 40, step: 1 },
@@ -115,8 +138,6 @@ const SLIDERS: SliderDef[] = [
   { group: 'view', key: 'ghostIdleSquash', label: '待机挤压', min: 0, max: 0.15, step: 0.01 },
   { group: 'view', key: 'ghostTransparentAlpha', label: '透明鬼α', min: 0.1, max: 1, step: 0.05 },
   { group: 'view', key: 'ghostRevealedAlpha', label: '显示鬼α', min: 0.3, max: 1, step: 0.05 },
-  { group: 'view', key: 'snapAlpha', label: '吸附框透明度', min: 0, max: 1, step: 0.02 },
-  { group: 'view', key: 'snapSize', label: '吸附框大小%', min: 40, max: 200, step: 1 },
   { group: 'view', key: 'showGrid', label: '显示格线', min: 0, max: 1, step: 1 },
   { group: 'view', key: 'showCoords', label: '显示坐标', min: 0, max: 1, step: 1 },
   { group: 'view', key: 'showHud', label: '显示标题', min: 0, max: 1, step: 1 },
@@ -125,8 +146,8 @@ const SLIDERS: SliderDef[] = [
 const FACING_LABEL = ['N↑', 'E→', 'S↓', 'W←'] as const;
 
 const FLOAT_KEYS = new Set([
+  'mirrorProjectionAlpha',
   'POINTER_GAIN_K',
-  'TRAY_SCALE',
   'BOARD_SCALE',
   'DRAG_SCALE_POP',
   'DRAG_OFFSET_Y',
@@ -134,14 +155,9 @@ const FLOAT_KEYS = new Set([
   'SMOOTH_TIME',
   'DRAG_LIFT_TRAVEL_CELLS',
   'DRAG_LIFT_POWER',
-  'glowAlpha',
-  'glowForward',
-  'glowSide',
-  'beamAlpha',
   'ghostIdleSquash',
   'ghostTransparentAlpha',
   'ghostRevealedAlpha',
-  'snapAlpha',
 ]);
 
 function readVal(def: SliderDef): number {
@@ -246,6 +262,7 @@ export function mountPropTuner(
 
   let lastGroup: Group | null = null;
   for (const def of SLIDERS) {
+    if (HIDDEN_KEYS.has(String(def.key))) continue;
     if (def.group !== lastGroup) {
       lastGroup = def.group;
       const sec = document.createElement('div');

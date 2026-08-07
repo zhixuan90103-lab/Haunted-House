@@ -146,7 +146,13 @@ export function attachInput(
     fromTray: boolean,
   ) => {
     const cell = cellSize();
-    const dragSizePx = computeDragSizePx(cell, PROP_STYLE.lightLiftScale);
+    const liftPct =
+      ghost.type === 'light'
+        ? PROP_STYLE.lightLiftScale
+        : ghost.type === 'mirror'
+          ? PROP_STYLE.mirrorLiftScale
+          : PROP_STYLE.boardScale;
+    const dragSizePx = computeDragSizePx(cell, liftPct);
     session = createDragSession({
       anchorCx,
       anchorCy,
@@ -290,11 +296,16 @@ export function attachInput(
         (br.left + br.width / 2 - stageRect.left) / layout.scale;
       const btnCy =
         (br.top + br.height / 2 - stageRect.top) / layout.scale;
+      const facing = (
+        type === 'mirror'
+          ? PROP_STYLE.mirrorDefaultFacing
+          : PROP_STYLE.defaultFacing
+      ) as DirValue;
       beginDrag(
         {
           source: 'tray',
           type,
-          facing: PROP_STYLE.defaultFacing as DirValue,
+          facing,
           cell: null,
           designX: btnCx || anchor.cx,
           designY: btnCy || anchor.cy,

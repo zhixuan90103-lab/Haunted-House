@@ -5,14 +5,15 @@
 
 import type { Board } from '../board';
 import { get } from '../board';
-import { FEEL } from '../feel/defaults';
 import { computeDragSizePx } from '../feel/drag-session';
 import { BOARD_LAYOUT, cellSize, TRAY_LAYOUT } from '../layout';
 import {
   applyPropStyleCss,
-  lightLiftScalePercent,
   lightPlacedScalePercent,
+  mirrorPlacedScalePercent,
+  propLiftScalePercent,
   PROP_STYLE,
+  traySlotScalePercent,
 } from '../propStyle';
 import {
   Dir,
@@ -28,9 +29,22 @@ import { freeBeamSpot, type FreeGlow } from './lightFx';
 export type { FreeGlow };
 export { freeBeamSpot };
 
-const PROP_SRC: Partial<Record<PropType, string>> = {
+/** 盘上 / 托盘·拿起 可分离贴图 */
+const PROP_SRC_BOARD: Partial<Record<PropType, string>> = {
   light: './prop-light.png',
+  mirror: './prop-mirror-board.png',
+  diffuser: './prop-diffuser.jpg',
+  beam_splitter: './prop-beam_splitter.jpg',
 };
+
+const PROP_SRC_TRAY: Partial<Record<PropType, string>> = {
+  light: './prop-light.png',
+  mirror: './prop-mirror-tray.png',
+  diffuser: './prop-diffuser.jpg',
+  beam_splitter: './prop-beam_splitter.jpg',
+};
+
+type PropViewContext = 'board' | 'tray' | 'drag' | 'drag-projection';
 
 const GHOST_SRC = './ghost.png';
 const BOARD_BG = './board-bg.jpg';
@@ -181,19 +195,63 @@ export type RenderState = {
   freeGlows?: FreeGlow[];
 };
 
-function dirRotateDeg(facing: number): number {
+function propRotateDeg(type: PropType, facing: number): number {
+  if (type === 'mirror') {
+    /**
+     * 盘上镜：资源已带斜面，只按 facing×90 点旋。
+     * 正/背面与折向见 optics.MIRROR_REFLECT（默认 facing 1 = 东来折上）。
+     */
+    const f = (((facing % 4) + 4) % 4);
+    return f * 90 + PROP_STYLE.mirrorRotateOffset;
+  }
+  // 手电等：素材朝东 + rotateOffset
   return ((facing - Dir.E + 4) % 4) * 90 + PROP_STYLE.rotateOffset;
 }
 
-function propImg(type: PropType, facing: number, extraClass = ''): HTMLElement {
+/**
+ * 镜贴图约定（与手电双层类比）：
+ * - tray / drag 本体：立式 prop-mirror-tray.png（= 手电本体）
+ * - board / 拿起时格上投影：斜置 prop-mirror-board.png（= 手电下方吸附框/投影）
+ */
+function propSrc(type: PropType, ctx: PropViewContext): string {
+  if (type === 'mirror') {
+    if (ctx === 'board' || ctx === 'drag-projection') {
+      return PROP_SRC_BOARD.mirror!;
+    }
+    // tray + drag 本体
+    return PROP_SRC_TRAY.mirror!;
+  }
+  if (ctx === 'board' || ctx === 'drag-projection') {
+    return PROP_SRC_BOARD[type] ?? './prop-light.png';
+  }
+  return PROP_SRC_TRAY[type] ?? PROP_SRC_BOARD[type] ?? './prop-light.png';
+}
+
+function propImg(
+  type: PropType,
+  facing: number,
+  extraClass = '',
+  ctx: PropViewContext = 'board',
+): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = `prop-sprite ${extraClass}`.trim();
   wrap.dataset.propType = type;
+  wrap.dataset.propCtx = ctx;
   const img = document.createElement('img');
-  img.src = PROP_SRC[type] ?? './prop-light.png';
+  img.src = propSrc(type, ctx);
   img.alt = type;
   img.draggable = false;
-  img.style.transform = `rotate(${dirRotateDeg(facing)}deg)`;
+  // 立式本体（托盘/拖影）：不拧 facing
+  // 盘上/投影：仅 facing×90（资源自带斜面；正反面见光学表）
+  const upright = type === 'mirror' && (ctx === 'tray' || ctx === 'drag');
+  const rot = upright
+    ? PROP_STYLE.mirrorRotateOffset
+    : propRotateDeg(type, facing);
+  img.style.transform = `rotate(${rot}deg)`;
+  if (type === 'mirror' && ctx === 'drag') {
+    img.style.filter =
+      'drop-shadow(0 6px 10px rgba(0,0,0,0.45)) drop-shadow(0 2px 2px rgba(0,0,0,0.25))';
+  }
   wrap.append(img);
   return wrap;
 }
@@ -274,10 +332,12 @@ function renderGhostLayer(
 export function renderBoard(els: DomBoardElements, state: RenderState): void {
   const { board, ghosts, lit, tray, drag, hidePropId } = state;
   const cs = cellSize();
+  const w = board.width;
+  const h = board.height;
 
   els.grid.replaceChildren();
-  for (let y = 0; y < board.height; y++) {
-    for (let x = 0; x < board.width; x++) {
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       const cell = document.createElement('div');
       cell.className = 'cell';
       cell.dataset.x = String(x);
@@ -310,7 +370,11 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
       slot.className = 'tray-item';
       slot.dataset.trayType = item.type;
       slot.setAttribute('aria-label', `${item.type} ${i + 1}`);
-      const spr = propImg(item.type, PROP_STYLE.trayFacing, 'tray-prop');
+      const trayFacing =
+        item.type === 'mirror'
+          ? PROP_STYLE.mirrorDefaultFacing
+          : PROP_STYLE.trayFacing;
+      const spr = propImg(item.type, trayFacing, 'tray-prop', 'tray');
       slot.append(spr);
       els.tray.append(slot);
     }
@@ -318,29 +382,69 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
 
   els.dragLayer.replaceChildren();
   if (drag) {
-    const free = propImg(drag.type, drag.facing, 'drag-follow');
-    // 拿起尺寸：lightLiftScale（+ 手感 BOARD_SCALE / pop）
+    // —— ① 本体（跟手）——
+    // 镜 = 立式 tray 图；手电 = 灯图（类比手电本体）
+    const free = propImg(drag.type, drag.facing, 'drag-follow', 'drag');
     const full =
-      drag.dragSizePx ?? computeDragSizePx(cs, PROP_STYLE.lightLiftScale);
+      drag.dragSizePx ??
+      computeDragSizePx(cs, propLiftScalePercent(drag.type));
     const scale = drag.scale ?? 1;
     const dragSize = full * scale;
+    let ox = 0;
+    let oy = 0;
+    if (drag.type === 'mirror') {
+      ox = PROP_STYLE.mirrorLiftOffsetX;
+      oy = PROP_STYLE.mirrorLiftOffsetY;
+    }
     free.style.width = `${dragSize}px`;
     free.style.height = `${dragSize}px`;
-    free.style.left = `${drag.designX - dragSize / 2}px`;
-    free.style.top = `${drag.designY - dragSize / 2}px`;
+    free.style.left = `${drag.designX - dragSize / 2 + ox}px`;
+    free.style.top = `${drag.designY - dragSize / 2 + oy}px`;
     free.style.opacity = '1';
-    // 手电本体不参与开灯缩放，瞬间满尺寸
     free.style.transform = '';
     if (!drag.cell) free.classList.add('drag-invalid');
     else free.classList.add('drag-valid');
+
+    // —— ② 镜：格上投影（与落盘同一套 mirrorBoardLayout）——
+    if (drag.type === 'mirror' && drag.cell) {
+      const proj = propImg(
+        'mirror',
+        drag.facing,
+        'drag-mirror-projection',
+        'drag-projection',
+      );
+      const lay = mirrorBoardLayout(cs);
+      // 格左上角 design 坐标 + 格内 left/top（与 paintOccupant 一致）
+      const cellLeft =
+        BOARD_LAYOUT.left +
+        BOARD_LAYOUT.padding +
+        drag.cell.x * cs;
+      const cellTop =
+        BOARD_LAYOUT.top +
+        BOARD_LAYOUT.padding +
+        drag.cell.y * cs;
+      applyMirrorBoardBox(proj, lay);
+      proj.style.left = `${cellLeft + lay.left}px`;
+      proj.style.top = `${cellTop + lay.top}px`;
+      proj.style.opacity = String(
+        Math.max(0, Math.min(1, PROP_STYLE.mirrorProjectionAlpha)),
+      );
+      proj.style.pointerEvents = 'none';
+      els.dragLayer.append(proj);
+    }
+
     els.dragLayer.append(free);
   }
 
   applyPropStyleCss(els.root);
-  // 托盘槽略小于拿起，用 lift 基准 × 托盘尺度（避免跟放下绑死）
-  const trayVis = cs * (lightLiftScalePercent() / 100) * FEEL.TRAY_SCALE * 0.5;
-  const trayHit = Math.max(52, trayVis * 1.25);
-  els.root.style.setProperty('--prop-tray-size', `${trayHit}px`);
+  // ② 托盘图标尺寸：只读 traySlotScale，绝不读拿起/盘上
+  const slotPx = Math.round(cs * (traySlotScalePercent() / 100));
+  els.root.style.setProperty('--prop-tray-slot-size', `${slotPx}px`);
+  // 容器高度随图标略增高，避免裁切（仍只改 CSS 变量，布局框由 TRAY_LAYOUT 定）
+  els.root.style.setProperty(
+    '--prop-tray-gap',
+    `${Math.max(4, Math.round(slotPx * 0.06))}px`,
+  );
 }
 
 function paintOccupant(
@@ -361,9 +465,15 @@ function paintOccupant(
 
   if (occ?.kind === 'prop') {
     if (hidePropId && occ.id === hidePropId) return;
-    const spr = propImg(occ.type, occ.facing);
-    // 手电：格心 + lightPlacedScale（与拿起 lightLiftScale 独立）
-    if (occ.type === 'light') {
+    const spr = propImg(occ.type, occ.facing, '', 'board');
+    if (occ.type === 'mirror') {
+      // 与拿起投影完全同一套：mirrorBoardLayout + 格内 px
+      const lay = mirrorBoardLayout(cellPx);
+      applyMirrorBoardBox(spr, lay);
+      spr.style.left = `${lay.left}px`;
+      spr.style.top = `${lay.top}px`;
+      spr.style.opacity = '1';
+    } else if (occ.type === 'light') {
       const size = Math.round(cellPx * (lightPlacedScalePercent() / 100));
       spr.classList.add('prop-on-board');
       spr.style.width = `${size}px`;
@@ -372,8 +482,36 @@ function paintOccupant(
       spr.style.top = '50%';
       spr.style.marginLeft = `${-size / 2}px`;
       spr.style.marginTop = `${-size / 2}px`;
-      spr.style.transform = 'none'; // 居中用 margin，旋转只在 img 上
+      spr.style.transform = 'none';
     }
     cell.append(spr);
   }
+}
+
+/**
+ * 镜 · 盘上/投影共用布局（心仪位置 = 投影位置 = 落盘位置）
+ * 相对「格左上角」：left/top 为 design px
+ */
+function mirrorBoardLayout(cellPx: number): {
+  size: number;
+  left: number;
+  top: number;
+} {
+  const size = Math.round(cellPx * (mirrorPlacedScalePercent() / 100));
+  const left = cellPx / 2 - size / 2 + PROP_STYLE.mirrorPlacedOffsetX;
+  const top = cellPx / 2 - size / 2 + PROP_STYLE.mirrorPlacedOffsetY;
+  return { size, left, top };
+}
+
+function applyMirrorBoardBox(
+  el: HTMLElement,
+  lay: { size: number },
+): void {
+  el.classList.add('prop-on-board', 'prop-mirror-on-board');
+  el.style.position = 'absolute';
+  el.style.boxSizing = 'border-box';
+  el.style.width = `${lay.size}px`;
+  el.style.height = `${lay.size}px`;
+  el.style.margin = '0';
+  el.style.transform = 'none'; // 旋转只在 img
 }
