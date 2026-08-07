@@ -13,8 +13,15 @@ import {
   mirrorPlacedScalePercent,
   propLiftScalePercent,
   PROP_STYLE,
-  traySlotScalePercent,
 } from '../propStyle';
+import {
+  clampTrayScroll,
+  countTrayItems,
+  createTrayMetrics,
+  preferredTrayGapPx,
+  preferredTraySlotPx,
+  trayTrackOffsetX,
+} from '../trayMetrics';
 import {
   Dir,
   GhostState,
@@ -87,7 +94,10 @@ export type DomBoardElements = {
   grid: HTMLElement;
   /** 鬼专用层：与 grid 同框，不随格子 replaceChildren 销毁 */
   ghostLayer: HTMLElement;
+  /** 托盘视口（裁剪） */
   tray: HTMLElement;
+  /** 托盘内容轨（flex 槽 + translateX 滚动） */
+  trayTrack: HTMLElement;
   hud: HTMLElement;
   dragLayer: HTMLElement;
   titleEl: HTMLElement;
@@ -162,6 +172,10 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   tray.id = 'tray';
   tray.className = 'game-tray game-tray-bare';
 
+  const trayTrack = document.createElement('div');
+  trayTrack.className = 'tray-track';
+  tray.append(trayTrack);
+
   const dragLayer = document.createElement('div');
   dragLayer.id = 'drag-layer';
   dragLayer.className = 'drag-layer';
@@ -175,6 +189,7 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
     grid,
     ghostLayer,
     tray,
+    trayTrack,
     hud,
     dragLayer,
     titleEl,
@@ -199,14 +214,100 @@ export type RenderState = {
 
 /** 托盘 DOM 签名：未变则不 rebuild，避免掐断滑入 CSS */
 let trayDomSig = '';
+/** 入场 overflow 放开的定时器 */
+let trayEnterTimer = 0;
+/** 补位 FLIP 清理定时器 */
+const trayFlipTimers = new Set<number>();
 
 export function resetTrayDomCache(): void {
   trayDomSig = '';
+  if (trayEnterTimer) {
+    clearTimeout(trayEnterTimer);
+    trayEnterTimer = 0;
+  }
+  for (const id of trayFlipTimers) clearTimeout(id);
+  trayFlipTimers.clear();
 }
+
+/** 入场动画时长 / 错峰（与 CSS 一致） */
+const TRAY_ENTER_MS = 560;
+const TRAY_ENTER_STAGGER_MS = 90;
+/** 拿起/放回后剩余道具补位滑动（对齐 BB2 TRAY_FLIP） */
+const TRAY_FLIP_MS = 200;
 
 function traySignature(tray: TrayItem[]): string {
   // 不含 enterTypes：解锁当帧 rebuild+滑入后，后续帧签名不变，避免掐动画
   return tray.map((t) => `${t.type}:${t.count}`).join(',');
+}
+
+function trayFacingFor(type: PropType): number {
+  return type === 'mirror'
+    ? PROP_STYLE.mirrorDefaultFacing
+    : PROP_STYLE.trayFacing;
+}
+
+/**
+ * 记录剩余槽屏幕矩形（FLIP First）。
+ * 跳过 `data-tray-picking`（正在拿起的那颗），保证按视觉顺序配对。
+ */
+function captureTrayItemRects(track: HTMLElement): DOMRect[] {
+  const list: DOMRect[] = [];
+  for (const node of track.children) {
+    if (!(node instanceof HTMLElement)) continue;
+    if (node.dataset.trayPicking === '1') continue;
+    list.push(node.getBoundingClientRect());
+  }
+  return list;
+}
+
+/**
+ * FLIP 补位：剩余道具从旧屏位滑到新屏位（拿起后 pad/间距变化）。
+ * first 与「非入场」新节点按顺序一一对应。
+ */
+function playTrayFlip(track: HTMLElement, first: DOMRect[]): void {
+  if (!first.length) return;
+  const survivors: HTMLElement[] = [];
+  for (const node of track.children) {
+    if (!(node instanceof HTMLElement)) continue;
+    // 新滑入的用自己的 enter 动画，不参与补位
+    if (node.classList.contains('tray-item-enter')) continue;
+    survivors.push(node);
+  }
+
+  const plays: { el: HTMLElement; dx: number; dy: number }[] = [];
+  const n = Math.min(first.length, survivors.length);
+  for (let i = 0; i < n; i++) {
+    const el = survivors[i]!;
+    const prev = first[i]!;
+    const last = el.getBoundingClientRect();
+    const dx = prev.left - last.left;
+    const dy = prev.top - last.top;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+    plays.push({ el, dx, dy });
+  }
+  if (!plays.length) return;
+
+  for (const { el, dx, dy } of plays) {
+    el.style.transition = 'none';
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+  void track.offsetWidth;
+
+  requestAnimationFrame(() => {
+    for (const { el } of plays) {
+      el.style.transition = `transform ${TRAY_FLIP_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+      el.style.transform = 'translate(0px, 0px)';
+    }
+  });
+
+  for (const { el } of plays) {
+    const tid = window.setTimeout(() => {
+      trayFlipTimers.delete(tid);
+      el.style.transition = '';
+      el.style.transform = '';
+    }, TRAY_FLIP_MS + 40);
+    trayFlipTimers.add(tid);
+  }
 }
 
 function propRotateDeg(type: PropType, facing: number): number {
@@ -400,13 +501,16 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
   // 鬼在独立层：打灯每帧 repaint 也不摘节点
   renderGhostLayer(els.ghostLayer, ghosts, board);
 
-  // 托盘：签名未变不 rebuild（滑入动画可播完）
+  // 托盘：固定图标尺寸 + track 横滑（BB2 思路，不缩到全显）
   const enterTypes = state.trayEnterTypes;
   const sig = traySignature(tray);
   if (sig !== trayDomSig) {
+    // First：重建前旧位（拿起/放回后剩余件要滑过去，不能瞬移）
+    const flipFirst = captureTrayItemRects(els.trayTrack);
     trayDomSig = sig;
     const enterSet = new Set(enterTypes ?? []);
-    els.tray.replaceChildren();
+    let enterIndex = 0;
+    els.trayTrack.replaceChildren();
     for (const item of tray) {
       for (let i = 0; i < item.count; i++) {
         const slot = document.createElement('button');
@@ -414,19 +518,53 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
         slot.className = 'tray-item';
         slot.dataset.trayType = item.type;
         slot.setAttribute('aria-label', `${item.type} ${i + 1}`);
+        const spr = propImg(
+          item.type,
+          trayFacingFor(item.type),
+          'tray-prop',
+          'tray',
+        );
         if (enterSet.has(item.type)) {
           slot.classList.add('tray-item-enter');
-          slot.style.animationDelay = `${i * 70}ms`;
+          // 错峰打在精灵上（真正做 transform 的节点）
+          spr.style.animationDelay = `${enterIndex * TRAY_ENTER_STAGGER_MS}ms`;
+          enterIndex += 1;
+          // 动画结束后恢复可点、去掉 class（避免 animation:both 锁死）
+          const done = () => {
+            slot.classList.remove('tray-item-enter');
+            spr.style.animationDelay = '';
+            spr.removeEventListener('animationend', done);
+          };
+          spr.addEventListener('animationend', done);
         }
-        const trayFacing =
-          item.type === 'mirror'
-            ? PROP_STYLE.mirrorDefaultFacing
-            : PROP_STYLE.trayFacing;
-        const spr = propImg(item.type, trayFacing, 'tray-prop', 'tray');
         slot.append(spr);
-        els.tray.append(slot);
+        els.trayTrack.append(slot);
       }
     }
+
+    // 入场期间放开 overflow，否则 translateY 被视口裁掉，看不见滑动过程
+    if (trayEnterTimer) {
+      clearTimeout(trayEnterTimer);
+      trayEnterTimer = 0;
+    }
+    if (enterIndex > 0) {
+      els.tray.classList.add('is-tray-entering');
+      const hold =
+        TRAY_ENTER_MS +
+        (enterIndex - 1) * TRAY_ENTER_STAGGER_MS +
+        80;
+      trayEnterTimer = window.setTimeout(() => {
+        els.tray.classList.remove('is-tray-entering');
+        trayEnterTimer = 0;
+      }, hold);
+    } else {
+      els.tray.classList.remove('is-tray-entering');
+    }
+
+    // 先写 track 偏移/槽尺寸，再测 Last 并 FLIP 补位
+    applyPropStyleCss(els.root);
+    applyTrayLayout(els, tray);
+    playTrayFlip(els.trayTrack, flipFirst);
   }
 
   els.dragLayer.replaceChildren();
@@ -486,14 +624,26 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
   }
 
   applyPropStyleCss(els.root);
-  // ② 托盘图标尺寸：只读 traySlotScale，绝不读拿起/盘上
-  const slotPx = Math.round(cs * (traySlotScalePercent() / 100));
+  // 每帧同步 slot / scroll（rebuild 时上面已 apply 一次，再写无害）
+  applyTrayLayout(els, tray);
+}
+
+/** 固定 slot 尺寸 + 居中 pad / 横滑 offset（不缩小图标） */
+function applyTrayLayout(
+  els: DomBoardElements,
+  tray: TrayItem[],
+): void {
+  const slotPx = preferredTraySlotPx();
+  const gapPx = preferredTrayGapPx(slotPx);
+  const m = createTrayMetrics(countTrayItems(tray), slotPx, gapPx);
+  const scrollX = clampTrayScroll(m.maxScroll);
+  const ox = trayTrackOffsetX(m, scrollX);
+
   els.root.style.setProperty('--prop-tray-slot-size', `${slotPx}px`);
-  // 容器高度随图标略增高，避免裁切（仍只改 CSS 变量，布局框由 TRAY_LAYOUT 定）
-  els.root.style.setProperty(
-    '--prop-tray-gap',
-    `${Math.max(4, Math.round(slotPx * 0.06))}px`,
-  );
+  els.root.style.setProperty('--prop-tray-gap', `${gapPx}px`);
+  els.trayTrack.style.transform = `translate3d(${ox}px,0,0)`;
+  els.tray.dataset.trayScrollable = m.fits ? '0' : '1';
+  els.tray.dataset.trayMaxScroll = String(m.maxScroll);
 }
 
 function paintOccupant(

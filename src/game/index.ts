@@ -22,6 +22,7 @@ import {
   type LoadedLevel,
 } from './level';
 import level001 from './levels/level_001.json';
+import { resetTrayScroll } from './trayMetrics';
 import { designToCell } from './layout';
 import {
   castReflectingLightPath,
@@ -440,6 +441,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.trayEnterTypes = [];
     resetGhostAppear();
     resetTrayDomCache();
+    resetTrayScroll();
     stopDwellLoop();
     scanHaptics.end();
     resolve(rt, scanHaptics);
@@ -456,6 +458,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   const detach = attachInput(uiRoot, {
     getBoard: () => rt.board,
+    getTray: () => rt.tray,
+    getTrayTrack: () => els.trayTrack,
     setDrag: (d) => {
       rt.drag = d;
       // 拖灯：停掉 dwell，避免与 input rAF 双开

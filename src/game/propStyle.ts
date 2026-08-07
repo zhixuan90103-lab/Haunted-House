@@ -1,8 +1,8 @@
 /**
  * 道具外观参数 — 四层互不耦合
  *
- * 1. **托盘容器** → `layout.TRAY_LAYOUT`（left/top/width/height）只定容器框
- * 2. **托盘图标** → `traySlotScale` 只定槽内图标边长（% 格），不读拿起/盘上
+ * 1. **托盘视口** → `layout.TRAY_LAYOUT` 只定裁剪框；多件横滑见 `trayMetrics`
+ * 2. **托盘图标** → `traySlotScale` 固定边长（% 格），**不**为塞屏缩小
  * 3. **拿起本体** → `*Lift*` 只定拖影跟手（镜=立式图）
  * 4. **盘上 / 投影** → `*Placed*` + `mirrorProjectionAlpha`（镜=斜置图；投影透明度独立）
  *

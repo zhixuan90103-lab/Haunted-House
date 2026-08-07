@@ -23,7 +23,19 @@ import {
   TRAY_LAYOUT,
 } from './layout';
 import { PROP_STYLE } from './propStyle';
-import type { DirValue, DragGhost, PropType } from './types';
+import {
+  clampTrayScroll,
+  countTrayItems,
+  createTrayMetrics,
+  getTrayScrollX,
+  preferredTrayGapPx,
+  preferredTraySlotPx,
+  setTrayScrollX,
+  TRAY_SCROLL_AXIS,
+  TRAY_SCROLL_SLOP_PX,
+  trayTrackOffsetX,
+} from './trayMetrics';
+import type { DirValue, DragGhost, PropType, TrayItem } from './types';
 
 export type InputCallbacks = {
   getBoard: () => Board;
@@ -35,6 +47,10 @@ export type InputCallbacks = {
   onDragMove: () => void;
   getLayout: () => StageLayout | null;
   getStage: () => HTMLElement;
+  /** 当前托盘（算 scroll 上限 / 件数） */
+  getTray: () => TrayItem[];
+  /** 托盘 track DOM（写 transform） */
+  getTrayTrack: () => HTMLElement | null;
   /**
    * 额外放置门禁（在 canPlace 之后）。
    * 返回 false 时不吸附、不落格（松手走 cancel）。
@@ -105,9 +121,78 @@ export function attachInput(
     type: PropType;
     facing: DirValue;
   } | null = null;
+  /** 托盘武装：未 take，待横滑 / 拖出判定 */
+  let pendingTray: {
+    type: PropType;
+    el: HTMLElement;
+  } | null = null;
+  /** pointer 落在托盘带上（含空白，可横滑） */
+  let trayPointerArmed = false;
+  /** 已进入托盘横滑 */
+  let trayScrolling = false;
+  let trayScrollStartX = 0;
   let activeDrag: DragGhost | null = null;
   let session: DragSession | null = null;
   let rafId = 0;
+
+  const trayMetricsNow = () => {
+    const slotPx = preferredTraySlotPx();
+    const gapPx = preferredTrayGapPx(slotPx);
+    return createTrayMetrics(countTrayItems(cb.getTray()), slotPx, gapPx);
+  };
+
+  const applyTrayTrackTransform = () => {
+    const track = cb.getTrayTrack();
+    if (!track) return;
+    const m = trayMetricsNow();
+    const sx = clampTrayScroll(m.maxScroll);
+    track.style.transform = `translate3d(${trayTrackOffsetX(m, sx)}px,0,0)`;
+  };
+
+  const beginTrayDrag = (
+    type: PropType,
+    trayBtn: HTMLElement,
+    design: { x: number; y: number },
+    layout: StageLayout,
+    stage: HTMLElement,
+  ) => {
+    // 标记被拿起的槽，托盘 rebuild 时 FLIP 排除它，其余从旧位滑过去
+    trayBtn.dataset.trayPicking = '1';
+    if (!cb.onTrayPick(type)) {
+      delete trayBtn.dataset.trayPicking;
+      return false;
+    }
+    pendingTray = null;
+    trayScrolling = false;
+    moved = true;
+    pendingBoardProp = null;
+    const anchor = trayAnchorCenter();
+    const br = trayBtn.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const btnCx = (br.left + br.width / 2 - stageRect.left) / layout.scale;
+    const btnCy = (br.top + br.height / 2 - stageRect.top) / layout.scale;
+    const facing = (
+      type === 'mirror'
+        ? PROP_STYLE.mirrorDefaultFacing
+        : PROP_STYLE.defaultFacing
+    ) as DirValue;
+    beginDrag(
+      {
+        source: 'tray',
+        type,
+        facing,
+        cell: null,
+        designX: btnCx || anchor.cx,
+        designY: btnCy || anchor.cy,
+      },
+      Number.isFinite(btnCx) ? btnCx : anchor.cx,
+      Number.isFinite(btnCy) ? btnCy : anchor.cy,
+      design.x,
+      design.y,
+      true,
+    );
+    return true;
+  };
 
   const stopRaf = () => {
     if (rafId) {
@@ -181,7 +266,48 @@ export function attachInput(
     const stage = cb.getStage();
     const d = clientToDesignLocal(e.clientX, e.clientY, stage, layout);
 
-    const dist = Math.hypot(d.x - downDesign.x, d.y - downDesign.y);
+    const dx = d.x - downDesign.x;
+    const dy = d.y - downDesign.y;
+    const dist = Math.hypot(dx, dy);
+
+    // 托盘：横滑 vs 拖出（BB2 轴锁；图标不缩，溢出靠 scroll）
+    if ((trayPointerArmed || trayScrolling) && !activeDrag) {
+      const m = trayMetricsNow();
+      const canScroll = !m.fits && m.maxScroll > 0;
+      if (!trayScrolling && canScroll) {
+        const isHScroll =
+          Math.abs(dx) >= TRAY_SCROLL_SLOP_PX &&
+          Math.abs(dx) >= Math.abs(dy) * TRAY_SCROLL_AXIS;
+        if (isHScroll) {
+          trayScrolling = true;
+          moved = true;
+          pendingTray = null; // 横滑中不再拿起
+        }
+      }
+      if (trayScrolling) {
+        setTrayScrollX(trayScrollStartX - dx);
+        clampTrayScroll(m.maxScroll);
+        applyTrayTrackTransform();
+        e.preventDefault();
+        return;
+      }
+      // 未进横滑：位移够则拿起（含仅 1 件、无法滑时）
+      if (pendingTray && dist >= DRAG_THRESHOLD_PX) {
+        // 可滑且明显横移 → 优先继续等横滑，不误拿
+        if (
+          canScroll &&
+          Math.abs(dx) >= Math.abs(dy) * TRAY_SCROLL_AXIS
+        ) {
+          e.preventDefault();
+          return;
+        }
+        beginTrayDrag(pendingTray.type, pendingTray.el, d, layout, stage);
+        trayPointerArmed = false;
+      }
+      e.preventDefault();
+      return;
+    }
+
     if (!moved && dist >= DRAG_THRESHOLD_PX) {
       moved = true;
       if (pendingBoardProp && !activeDrag) {
@@ -237,6 +363,7 @@ export function attachInput(
 
     stopRaf();
 
+    // 托盘轻点：不 take（需拖出）；盘上轻点仍旋转
     if (!moved && pendingBoardProp && !activeDrag) {
       cb.onRotate(pendingBoardProp.x, pendingBoardProp.y);
     } else if (activeDrag) {
@@ -244,9 +371,18 @@ export function attachInput(
       else cb.onCancelDrag(activeDrag);
     }
 
+    if (trayScrolling) {
+      const m = trayMetricsNow();
+      clampTrayScroll(m.maxScroll);
+      applyTrayTrackTransform();
+    }
+
     activeDrag = null;
     session = null;
     pendingBoardProp = null;
+    pendingTray = null;
+    trayPointerArmed = false;
+    trayScrolling = false;
     pointerId = null;
     moved = false;
     cb.setDrag(null);
@@ -281,41 +417,23 @@ export function attachInput(
     if (!isInDesignBounds(design.x, design.y)) return;
 
     const target = e.target as HTMLElement | null;
-    const trayBtn = target?.closest?.('.tray-item') as HTMLElement | null;
-    if (trayBtn?.dataset.trayType) {
-      const type = trayBtn.dataset.trayType as PropType;
-      if (!cb.onTrayPick(type)) return;
+    const trayEl = target?.closest?.('#tray') as HTMLElement | null;
+    if (trayEl) {
       downDesign = design;
-      moved = true;
+      moved = false;
       pendingBoardProp = null;
-      const anchor = trayAnchorCenter();
-      // 优先用按钮中心作锚（更接近 BB 槽中心）
-      const br = trayBtn.getBoundingClientRect();
-      const stageRect = stage.getBoundingClientRect();
-      const btnCx =
-        (br.left + br.width / 2 - stageRect.left) / layout.scale;
-      const btnCy =
-        (br.top + br.height / 2 - stageRect.top) / layout.scale;
-      const facing = (
-        type === 'mirror'
-          ? PROP_STYLE.mirrorDefaultFacing
-          : PROP_STYLE.defaultFacing
-      ) as DirValue;
-      beginDrag(
-        {
-          source: 'tray',
-          type,
-          facing,
-          cell: null,
-          designX: btnCx || anchor.cx,
-          designY: btnCy || anchor.cy,
-        },
-        Number.isFinite(btnCx) ? btnCx : anchor.cx,
-        Number.isFinite(btnCy) ? btnCy : anchor.cy,
-        design.x,
-        design.y,
-        true,
-      );
+      pendingTray = null;
+      trayPointerArmed = true;
+      trayScrolling = false;
+      trayScrollStartX = getTrayScrollX();
+      const trayBtn = target?.closest?.('.tray-item') as HTMLElement | null;
+      if (trayBtn?.dataset.trayType) {
+        pendingTray = {
+          type: trayBtn.dataset.trayType as PropType,
+          el: trayBtn,
+        };
+      }
+      // 空白带也可横滑；件数少 fits 时无 scroll
       beginTrack(e);
       e.preventDefault();
       return;

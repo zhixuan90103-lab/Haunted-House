@@ -27,8 +27,8 @@ export const BOARD_LAYOUT: BoardLayout = {
 };
 
 /**
- * 托盘**容器**（与图标大小无关）。
- * 宽高需能排下 N 个 traySlot 图标；图标 180% 格 ×3 ≈ 需接近全宽。
+ * 托盘**视口**（与图标大小无关）。
+ * 图标固定 traySlotScale；件数多时 track 横滑，不缩到全显（见 trayMetrics）。
  */
 export const TRAY_LAYOUT: TrayLayout = {
   left: 0,

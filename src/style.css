@@ -661,8 +661,9 @@ button:active {
 }
 
 /**
- * 托盘容器：只做 flex 排布，尺寸来自 TRAY_LAYOUT（JS 写 left/top/width/height）。
- * 图标大小仅 --prop-tray-slot-size，与拿起/投影无关。
+ * 托盘视口：尺寸来自 TRAY_LAYOUT；平时裁剪以便横滑。
+ * 图标固定 --prop-tray-slot-size（不缩到全显）；多件时 track 横滑。
+ * 入场动画期间加 .is-tray-entering → overflow:visible，才能看见自下而上滑入。
  */
 .game-tray.game-tray-bare {
   background: transparent;
@@ -671,19 +672,38 @@ button:active {
   backdrop-filter: none;
   padding: 0;
   border-radius: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--prop-tray-gap, 8px);
-  overflow: visible;
+  display: block;
+  overflow: hidden;
   box-sizing: border-box;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.game-tray.game-tray-bare.is-tray-entering {
+  overflow: visible;
+  /* 入场时抬到拖影层下、棋盘上，避免被其它 UI 盖住 */
+  z-index: 5;
+}
+
+/** 内容轨：水平排布；translateX 由 JS 写（居中 pad − scroll） */
+.game-tray.game-tray-bare .tray-track {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--prop-tray-gap, 8px);
+  height: 100%;
+  width: max-content;
+  min-height: 100%;
+  will-change: transform;
+  pointer-events: auto;
 }
 
 .game-tray.game-tray-bare .tray-item {
   background: transparent;
   border: 0;
   box-shadow: none;
-  /* 布局占位 = 图标本身，不被 hitPad 撑破三槽 */
+  /* 布局占位 = 图标本身，固定尺寸不随件数缩小 */
   width: var(--prop-tray-slot-size, 56px);
   height: var(--prop-tray-slot-size, 56px);
   padding: 0;
@@ -693,6 +713,8 @@ button:active {
   align-items: center;
   justify-content: center;
   position: relative;
+  /* 补位 FLIP 用 JS 写 transform；will-change 减少抖动 */
+  will-change: transform;
 }
 
 .game-tray.game-tray-bare .tray-item .prop-sprite {
@@ -702,19 +724,27 @@ button:active {
   pointer-events: none;
 }
 
-/* 全鬼发现后镜等道具滑入托盘 */
+/**
+ * 全鬼发现后镜等道具滑入托盘。
+ * 动画打在 .prop-sprite 上，避免和按钮布局 transform 打架；
+ * 父级 .is-tray-entering 放开 overflow，自下而上全程可见。
+ */
 .tray-item.tray-item-enter {
-  animation: tray-item-slide-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  pointer-events: none; /* 滑入中不可点 */
+}
+
+.tray-item.tray-item-enter .prop-sprite {
+  animation: tray-item-slide-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes tray-item-slide-in {
   0% {
     opacity: 0;
-    transform: translateY(56px) scale(0.82);
+    transform: translateY(64px) scale(0.78);
   }
-  60% {
+  55% {
     opacity: 1;
-    transform: translateY(-6px) scale(1.04);
+    transform: translateY(-8px) scale(1.06);
   }
   100% {
     opacity: 1;
