@@ -1,19 +1,20 @@
 {
   "id": "level_001",
   "title": "绕心三折",
-  "intent": "中心 1 格墙；三鬼分散不共线。1 灯 2 镜绕墙两次折，折线串三鬼。鬼格禁放。",
+  "intent": "中心墙；四鬼 (0,2)(3,2)(0,4)(2,4)——原 y=3 两只改到 y=4。1 灯 3 镜无漫光。鬼格禁放。",
   "board": { "width": 5, "height": 5 },
   "walls": [
     { "x": 2, "y": 2 }
   ],
   "ghosts": [
-    { "id": "g1", "x": 3, "y": 0 },
-    { "id": "g2", "x": 4, "y": 2 },
-    { "id": "g3", "x": 1, "y": 4 }
+    { "id": "g1", "x": 0, "y": 2 },
+    { "id": "g2", "x": 3, "y": 2 },
+    { "id": "g3", "x": 0, "y": 4 },
+    { "id": "g4", "x": 2, "y": 4 }
   ],
   "tray": [
     { "type": "light", "count": 1 },
-    { "type": "mirror", "count": 2 }
+    { "type": "mirror", "count": 3 }
   ],
-  "reference": "Wall center (2,2). Ghosts (3,0)(4,2)(1,4) non-collinear. Standard: light (0,0) facing E; mirror (4,0) facing 1 (E→S); mirror (4,4) facing 2 (S→W). Path top row through g1 → turn S down col4 through g2 (east of wall) → turn W along bottom through g3. Beam never crosses wall cell."
+  "reference": "Ghosts (0,2)(3,2)(0,4)(2,4), wall (2,2). Standard: light (0,3) facing N; M1 (0,1) facing 3 (N→E); M2 (3,1) facing 0 (E→S); M3 (3,4) facing 1 (S→W). Path: N through g1 → E → S through g2 → W along bottom through g4 and g3."
 }

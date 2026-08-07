@@ -13,7 +13,14 @@ import {
 import { createScanHaptics } from './feel/scan-haptics';
 import { allGhostsFound, anyGhostCharging, stepGhosts } from './ghosts';
 import { attachInput } from './input';
-import { loadLevel, returnToTray, takeFromTray, type LoadedLevel } from './level';
+import {
+  loadLevel,
+  returnToTray,
+  takeFromTray,
+  TRAY_UNLOCK_ON_ALL_FOUND,
+  unlockTrayTypes,
+  type LoadedLevel,
+} from './level';
 import level001 from './levels/level_001.json';
 import { designToCell } from './layout';
 import {
@@ -38,6 +45,7 @@ import {
   buildUiShell,
   renderBoard,
   resetGhostAppear,
+  resetTrayDomCache,
   type DomBoardElements,
 } from './view/domBoard';
 import { startGhostIdleLoop } from './view/ghostIdle';
@@ -69,9 +77,30 @@ type Runtime = {
   lit: Set<string>;
   drag: DragGhost | null;
   def: LevelDef;
-  /** 拖动手电时连续光斑（design） */
+  /** 拖动手电时连续光斑（design）；扫描态用 */
   freeGlows: FreeGlow[];
+  /** 可放格预览：完整折线光（与放置态一致） */
+  previewLight: PlacedLightFx | null;
+  /** 全鬼发现后已解锁镜等进托盘 */
+  trayUnlocked: boolean;
+  /** 本帧需滑入动画的托盘类型（paint 消费后清空） */
+  trayEnterTypes: string[];
 };
+
+/** 全员 everLit → 镜等滑入托盘（只触发一次） */
+function maybeUnlockTray(rt: Runtime): void {
+  if (rt.trayUnlocked) return;
+  if (!allGhostsFound(rt.ghosts)) return;
+  const unlocked = unlockTrayTypes(
+    rt.tray,
+    rt.def,
+    TRAY_UNLOCK_ON_ALL_FOUND,
+  );
+  rt.trayUnlocked = true;
+  if (unlocked.length) {
+    rt.trayEnterTypes = unlocked;
+  }
+}
 
 function opticsGet(rt: Runtime): (x: number, y: number) => Occupant {
   return (x, y) => {
@@ -136,23 +165,74 @@ function resolve(
 ): void {
   const getOcc = opticsGet(rt);
   rt.freeGlows = [];
+  rt.previewLight = null;
 
-  // —— 扫描：拖动手电 → 光斑自由跟手（前方 1 格距离连续点）——
+  // —— 拖动手电 ——
   if (rt.drag?.type === 'light') {
-    const spot = freeBeamSpot(
-      rt.drag.designX,
-      rt.drag.designY,
-      rt.drag.facing,
-    );
+    const drag = rt.drag;
+    const ghostsPrev = rt.ghosts;
+
+    // 可放格（有吸附）：按吸附格完整光路，动态长度/光斑
+    if (drag.cell) {
+      const { x, y } = drag.cell;
+      const facing = drag.facing as Dir;
+      const path = castReflectingLightPath(
+        rt.board.width,
+        rt.board.height,
+        getOcc,
+        x,
+        y,
+        facing,
+      );
+      rt.previewLight = {
+        x,
+        y,
+        facing: drag.facing as DirValue,
+        segments: path.segments,
+        endX: path.end?.x ?? null,
+        endY: path.end?.y ?? null,
+        litCount: path.litCells.length,
+      };
+
+      // 逻辑 lit = 其它已放灯 + 预览灯
+      const lights = collectLightsFromGet(
+        rt.board.width,
+        rt.board.height,
+        getOcc,
+      );
+      lights.push({ x, y, dir: facing });
+      const { lit } = computeLit({
+        width: rt.board.width,
+        height: rt.board.height,
+        get: getOcc,
+        lights,
+      });
+      rt.lit = lit;
+      rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
+      maybeUnlockTray(rt);
+
+      const spotCell =
+        path.end != null
+          ? { x: path.end.x, y: path.end.y }
+          : { x, y };
+      scanHaptics.onScanFrame({
+        spotCell,
+        ghostsPrev,
+        ghosts: rt.ghosts,
+        nowMs,
+      });
+      return;
+    }
+
+    // 扫描：光斑跟手（前方固定距离），短连接
+    const spot = freeBeamSpot(drag.designX, drag.designY, drag.facing);
     rt.freeGlows = [spot];
 
-    // 逻辑 lit：光斑中心落在哪格就亮哪格（不吸附手电格）
     const lit = new Set<string>();
     const cell = designToCell(spot.designX, spot.designY);
     if (cell && canLitCell(rt, cell.x, cell.y)) {
       lit.add(cellKey(cell.x, cell.y));
     }
-    // 其它已放置光源仍走完整光路（不含拖动手电）
     const lights = collectLightsFromGet(
       rt.board.width,
       rt.board.height,
@@ -167,9 +247,8 @@ function resolve(
     for (const k of placed.lit) lit.add(k);
 
     rt.lit = lit;
-    const ghostsPrev = rt.ghosts;
     rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
-    // 探查震动：仅握灯扫描（光斑格距鬼 + 出场尖峰）
+    maybeUnlockTray(rt);
     scanHaptics.onScanFrame({
       spotCell: cell,
       ghostsPrev,
@@ -196,6 +275,7 @@ function resolve(
   });
   rt.lit = lit;
   rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
+  maybeUnlockTray(rt);
 }
 
 /** 盘上 light 发射列表；折线（含镜）。拖起中的灯排除。 */
@@ -239,6 +319,7 @@ function paint(
 ): void {
   const hidePropId =
     rt.drag?.source === 'board' ? rt.drag.propId : undefined;
+  const enterTypes = rt.trayEnterTypes;
   renderBoard(els, {
     board: rt.board,
     ghosts: rt.ghosts,
@@ -246,14 +327,24 @@ function paint(
     tray: rt.tray,
     drag: rt.drag,
     hidePropId,
+    trayEnterTypes: enterTypes,
   });
-  // 光效层：放置发射 + 扫描 beam/glow/吸附框（Additive）
+  // 滑入动画只播一帧标记即可；节点保留后动画可播完
+  if (enterTypes.length) rt.trayEnterTypes = [];
+
+  // 光效层：放置发射 + 扫描/可放预览（Additive）
   lightFx.paint({
     drag: rt.drag,
     freeGlows: rt.freeGlows,
     placedLights: collectPlacedLightFx(rt.board, hidePropId),
+    previewLight: rt.previewLight,
   });
   if (rt.def.title) els.titleEl.textContent = rt.def.title;
+  // 提示：找全鬼后提示可用镜
+  if (rt.trayUnlocked) {
+    els.hintEl.textContent =
+      '摆镜折光 · 点旋改朝向 · 全员显示后拍照（待做）';
+  }
 }
 
 export function mountGame(opts: MountGameOptions): GameHandle {
@@ -272,6 +363,9 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     drag: null,
     def: loaded.def,
     freeGlows: [],
+    previewLight: null,
+    trayUnlocked: false,
+    trayEnterTypes: [],
   };
 
   applyPropStyleCss(uiRoot);
@@ -340,8 +434,12 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.tray = loaded.tray;
     rt.drag = null;
     rt.freeGlows = [];
+    rt.previewLight = null;
     rt.def = loaded.def;
+    rt.trayUnlocked = false;
+    rt.trayEnterTypes = [];
     resetGhostAppear();
+    resetTrayDomCache();
     stopDwellLoop();
     scanHaptics.end();
     resolve(rt, scanHaptics);

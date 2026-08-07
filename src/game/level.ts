@@ -76,9 +76,48 @@ export function loadLevel(def: LevelDef): LoadedLevel {
   }
 
   const ghosts = resetGhosts(def.ghosts);
-  const tray = def.tray.map((t) => ({ ...t }));
+  // 开局托盘仅手电；镜等道具等全鬼发现后再解锁
+  const tray = initialTray(def);
 
   return { def, board, ghosts, tray };
+}
+
+/** 开局可见托盘：仅 light */
+export function initialTray(def: LevelDef): TrayItem[] {
+  return def.tray
+    .filter((t) => t.type === 'light')
+    .map((t) => ({ ...t }));
+}
+
+/** 全鬼发现后解锁进托盘的道具类型 */
+export const TRAY_UNLOCK_ON_ALL_FOUND: TrayItem['type'][] = [
+  'mirror',
+  'beam_splitter',
+  'diffuser',
+];
+
+/** 按关卡 def 把指定类型补进托盘（解锁用） */
+export function unlockTrayTypes(
+  tray: TrayItem[],
+  def: LevelDef,
+  types: readonly string[],
+): string[] {
+  const unlocked: string[] = [];
+  const want = new Set(types);
+  for (const t of def.tray) {
+    if (!want.has(t.type) || t.count <= 0) continue;
+    const ex = tray.find((x) => x.type === t.type);
+    if (ex) {
+      if (ex.count < t.count) {
+        ex.count = t.count;
+        unlocked.push(t.type);
+      }
+    } else {
+      tray.push({ type: t.type, count: t.count });
+      unlocked.push(t.type);
+    }
+  }
+  return unlocked;
 }
 
 export function trayCount(tray: TrayItem[], type: string): number {

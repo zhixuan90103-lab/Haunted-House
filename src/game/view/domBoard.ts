@@ -135,7 +135,7 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   const hintEl = document.createElement('p');
   hintEl.className = 'game-hint';
   hintEl.textContent =
-    '拖出手电扫描找鬼 · 全部找到后才能放格 · 点旋改朝向';
+    '拖出手电找鬼 · 全部找到后镜子滑入 · 再放灯折光';
   const restartBtn = document.createElement('button');
   restartBtn.type = 'button';
   restartBtn.id = 'btn-restart';
@@ -193,7 +193,21 @@ export type RenderState = {
   drag: DragGhost | null;
   hidePropId?: string;
   freeGlows?: FreeGlow[];
+  /** 本帧托盘滑入的类型（如 mirror），只在重建托盘时用一次 */
+  trayEnterTypes?: string[];
 };
+
+/** 托盘 DOM 签名：未变则不 rebuild，避免掐断滑入 CSS */
+let trayDomSig = '';
+
+export function resetTrayDomCache(): void {
+  trayDomSig = '';
+}
+
+function traySignature(tray: TrayItem[]): string {
+  // 不含 enterTypes：解锁当帧 rebuild+滑入后，后续帧签名不变，避免掐动画
+  return tray.map((t) => `${t.type}:${t.count}`).join(',');
+}
 
 function propRotateDeg(type: PropType, facing: number): number {
   if (type === 'mirror') {
@@ -281,10 +295,20 @@ function createGhostEl(g: Ghost): HTMLElement {
   });
 
   const img = document.createElement('img');
+  img.className = 'ghost-base';
   img.src = GHOST_SRC;
   img.alt = 'ghost';
   img.draggable = false;
-  body.append(img);
+
+  // 被光照到时：同贴图 Additive 叠一层（仅 Revealed）
+  const litAdd = document.createElement('img');
+  litAdd.className = 'ghost-lit-add';
+  litAdd.src = GHOST_SRC;
+  litAdd.alt = '';
+  litAdd.draggable = false;
+  litAdd.setAttribute('aria-hidden', 'true');
+
+  body.append(img, litAdd);
   el.append(body);
   syncGhostVisualState(el, g);
   return el;
@@ -300,6 +324,21 @@ function ensureGhostEl(g: Ghost): HTMLElement {
     el = createGhostEl(g);
     ghostPool.set(g.id, el);
   } else {
+    // 热更新：旧池节点补 Additive 层
+    const body = el.querySelector('.ghost-body');
+    if (body && !body.querySelector('.ghost-lit-add')) {
+      const base = body.querySelector('img');
+      if (base && !base.classList.contains('ghost-base')) {
+        base.classList.add('ghost-base');
+      }
+      const litAdd = document.createElement('img');
+      litAdd.className = 'ghost-lit-add';
+      litAdd.src = GHOST_SRC;
+      litAdd.alt = '';
+      litAdd.draggable = false;
+      litAdd.setAttribute('aria-hidden', 'true');
+      body.append(litAdd);
+    }
     syncGhostVisualState(el, g);
   }
   return el;
@@ -361,22 +400,32 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
   // 鬼在独立层：打灯每帧 repaint 也不摘节点
   renderGhostLayer(els.ghostLayer, ghosts, board);
 
-  // 托盘：按 count 展开为独立槽位，横向平均分布
-  els.tray.replaceChildren();
-  for (const item of tray) {
-    for (let i = 0; i < item.count; i++) {
-      const slot = document.createElement('button');
-      slot.type = 'button';
-      slot.className = 'tray-item';
-      slot.dataset.trayType = item.type;
-      slot.setAttribute('aria-label', `${item.type} ${i + 1}`);
-      const trayFacing =
-        item.type === 'mirror'
-          ? PROP_STYLE.mirrorDefaultFacing
-          : PROP_STYLE.trayFacing;
-      const spr = propImg(item.type, trayFacing, 'tray-prop', 'tray');
-      slot.append(spr);
-      els.tray.append(slot);
+  // 托盘：签名未变不 rebuild（滑入动画可播完）
+  const enterTypes = state.trayEnterTypes;
+  const sig = traySignature(tray);
+  if (sig !== trayDomSig) {
+    trayDomSig = sig;
+    const enterSet = new Set(enterTypes ?? []);
+    els.tray.replaceChildren();
+    for (const item of tray) {
+      for (let i = 0; i < item.count; i++) {
+        const slot = document.createElement('button');
+        slot.type = 'button';
+        slot.className = 'tray-item';
+        slot.dataset.trayType = item.type;
+        slot.setAttribute('aria-label', `${item.type} ${i + 1}`);
+        if (enterSet.has(item.type)) {
+          slot.classList.add('tray-item-enter');
+          slot.style.animationDelay = `${i * 70}ms`;
+        }
+        const trayFacing =
+          item.type === 'mirror'
+            ? PROP_STYLE.mirrorDefaultFacing
+            : PROP_STYLE.trayFacing;
+        const spr = propImg(item.type, trayFacing, 'tray-prop', 'tray');
+        slot.append(spr);
+        els.tray.append(slot);
+      }
     }
   }
 

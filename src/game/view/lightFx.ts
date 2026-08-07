@@ -55,6 +55,10 @@ export type LightFxPaintInput = {
   freeGlows: FreeGlow[];
   /** 盘上 light 发射（不含正被拖起的那盏） */
   placedLights: PlacedLightFx[];
+  /**
+   * 可放格预览：拖灯且合法吸附时，按该格+朝向画完整折线光（动态长度/光斑）
+   */
+  previewLight: PlacedLightFx | null;
 };
 
 export type LightFxHandle = {
@@ -313,21 +317,22 @@ function paintSnapFrame(
 }
 
 /**
- * 放置态：折线段 beam（可经镜）+ 尽头光斑。
- * 首段锚用 light 的 facing 偏移；续段从镜格心出发（offset 0）。
+ * 放置态 / 可放预览：折线段 beam（可经镜）+ 尽头光斑。
  */
 function paintPlacedLight(
   ctx: CanvasRenderingContext2D,
   light: PlacedLightFx,
   cell: number,
+  openT: number = 1,
 ): void {
   if (light.segments.length === 0) return;
+  const t = Math.max(0, Math.min(1, openT));
+  if (t <= 0.001) return;
 
   for (let i = 0; i < light.segments.length; i++) {
     const seg = light.segments[i]!;
     const from = cellToDesignCenter(seg.fromX, seg.fromY);
     const to = cellToDesignCenter(seg.toX, seg.toY);
-    // 推算本段朝向（用于灯头锚点旋转；续段 from 是镜，offset 仍按朝向转）
     const fdx = seg.toX - seg.fromX;
     const fdy = seg.toY - seg.fromY;
     let facing = light.facing;
@@ -337,7 +342,6 @@ function paintPlacedLight(
       else if (fdy > 0) facing = 2;
       else facing = 0;
     }
-    // 仅首段用「放下连接偏移」；镜后段从镜心出，offset 用 0 避免二次外推
     if (i === 0) {
       paintBeamToEnd(
         ctx,
@@ -347,16 +351,16 @@ function paintPlacedLight(
         to.dy,
         facing as DirValue,
         cell,
-        1,
+        t,
       );
     } else {
-      paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, 1);
+      paintBeamSegmentCenters(ctx, from.dx, from.dy, to.dx, to.dy, cell, t);
     }
   }
 
   if (light.endX != null && light.endY != null) {
     const to = cellToDesignCenter(light.endX, light.endY);
-    paintGlow(ctx, [{ designX: to.dx, designY: to.dy }], cell, 1);
+    paintGlow(ctx, [{ designX: to.dx, designY: to.dy }], cell, t);
   }
 }
 
@@ -412,7 +416,7 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
   };
 
   const paint = (input: LightFxPaintInput) => {
-    const { drag, freeGlows, placedLights } = input;
+    const { drag, freeGlows, placedLights, previewLight } = input;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const pw = Math.round(DESIGN_W * dpr);
     const ph = Math.round(DESIGN_H * dpr);
@@ -428,20 +432,22 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
 
     const cell = cellSize();
     const scanning = drag?.type === 'light';
+    const openT = drag?.openT ?? 1;
 
-    // 1) 盘上已放手电：持续发射（拖起中的那盏不在 placedLights 里）
+    // 1) 盘上已放手电
     for (const L of placedLights) {
-      paintPlacedLight(ctx, L, cell);
+      paintPlacedLight(ctx, L, cell, 1);
     }
 
-    // 2) 扫描态：吸附框 + 跟手 beam/glow
+    // 2) 拖灯：可放则完整光路瞬切，否则扫描短光
     if (scanning && drag) {
-      if (drag.cell) {
+      if (drag.cell && previewLight) {
         paintSnapFrame(ctx, drag.cell.x, drag.cell.y, cell);
+        paintPlacedLight(ctx, previewLight, cell, openT);
+      } else {
+        paintBeam(ctx, drag.designX, drag.designY, drag.facing, cell, openT);
+        paintGlow(ctx, freeGlows, cell, openT);
       }
-      const openT = drag.openT ?? 1;
-      paintBeam(ctx, drag.designX, drag.designY, drag.facing, cell, openT);
-      paintGlow(ctx, freeGlows, cell, openT);
     }
 
     ctx.filter = 'none';
