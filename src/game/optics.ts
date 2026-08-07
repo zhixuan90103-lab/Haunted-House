@@ -183,6 +183,47 @@ export function computeLit(input: OpticsInput): OpticsOutput {
 }
 
 /**
+ * 直线光路（放置发射用）：从光源格沿 dir 前进，
+ * 空/鬼格点亮并继续，墙/道具停止，出界停止。
+ * 返回按序 lit 格；无障碍时一直走到棋盘边界内最远格。
+ */
+export type StraightBeamPath = {
+  litCells: Array<{ x: number; y: number }>;
+  /** 最远被照亮格；无则 null（贴脸墙等） */
+  end: { x: number; y: number } | null;
+};
+
+export function castStraightLightPath(
+  width: number,
+  height: number,
+  get: (x: number, y: number) => Occupant,
+  x: number,
+  y: number,
+  dir: Dir,
+): StraightBeamPath {
+  const litCells: Array<{ x: number; y: number }> = [];
+  const { dx, dy } = DELTA[dir];
+  let cx = x;
+  let cy = y;
+  for (;;) {
+    cx += dx;
+    cy += dy;
+    if (!inBounds(cx, cy, width, height)) break;
+    const occ = get(cx, cy);
+    if (occ === null || occ.kind === 'ghost') {
+      litCells.push({ x: cx, y: cy });
+      continue;
+    }
+    // wall / prop / 其它：阻挡，不亮该格
+    break;
+  }
+  return {
+    litCells,
+    end: litCells.length > 0 ? litCells[litCells.length - 1]! : null,
+  };
+}
+
+/**
  * Collect light poses from board (via get, may include drag overlay).
  * opts.scanLightIds: those light prop ids get maxSteps (handheld scan).
  */

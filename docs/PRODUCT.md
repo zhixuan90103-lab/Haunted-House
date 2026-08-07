@@ -18,6 +18,7 @@
 | **`docs/PRODUCT.md`（本文）** | 产品定位、玩法、规则细则 |
 | `docs/OPTICS_SPEC.md` | 光路与鬼状态算法（实现冻结） |
 | `docs/INTERACTION_SPEC.md` | 交互、会话、关卡 JSON（实现冻结） |
+| `docs/HAPTICS_SPEC.md` | **扫描震动设计**（开灯/底噪/近鬼/过格/出场三连） |
 | `docs/PROGRESS.md` | **实现进度 / 已落地修改总览** |
 | `docs/ASSETS.md` | **美术定稿路径**（board / ghost / light） |
 | `docs/HANDOFF_SLICE0_STEP1.md` | 第 1 步实现交接（找鬼） |
@@ -69,8 +70,8 @@
 
 ```
 进入关卡（固定：鬼位、场景、托盘道具）
-  → 从托盘直接拖道具到盘（类 BB）
-  → 拖动光源也会发光：改变鬼的显示状态
+  → 拖动手电扫描（握灯发光；未找全前不可落格）
+  → 全部鬼 everLit（知位置）后，才可把手电放到格子上
   → 摆放/旋转镜、漫射等，规划光路
   → 多光源照亮取并集
   → 所有鬼同时「完全显示」
@@ -358,7 +359,7 @@
 - 玩法：`src/main.ts` 或 `src/game/*`  
 - UI：仅 `#ui-root`  
 - 坐标：设计空间 390×844 + `clientToDesign`  
-- 震动：`src/utils/haptics.ts` / native 插件  
+- 震动：`docs/HAPTICS_SPEC.md` · `src/game/feel/haptic-*` · `src/utils/haptics.ts` · native 插件  
 - 道具 type id：优先用 §9.1 表中 `id`
 
 细节见 `AGENTS.md`。

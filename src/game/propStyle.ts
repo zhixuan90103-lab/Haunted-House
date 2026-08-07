@@ -1,12 +1,18 @@
 /** Mutable prop visual params (tuned live, then bake into defaults). */
 
 export type PropStyle = {
-  /** Board cell sprite scale % (100 = fill cell) */
+  /** Board cell sprite scale % (100 = fill cell); non-light props */
   boardScale: number;
-  /** Extra scale for light on board / drag */
-  lightBoardScale: number;
-  /** Drag size multiplier on top of lightBoardScale */
-  dragScale: number;
+  /**
+   * 手电拿起/拖动边长：相对格边 %（100 = 一格宽）
+   * 实际 px = cellSize × lightLiftScale / 100
+   */
+  lightLiftScale: number;
+  /**
+   * 手电放下（盘上）边长：相对格边 %（100 = 一格宽）
+   * 实际 px = cellSize × lightPlacedScale / 100
+   */
+  lightPlacedScale: number;
   /**
    * Extra CSS degrees after dir mapping.
    * Asset faces East at 0°; Dir.N → -90° before this offset.
@@ -20,8 +26,9 @@ export type PropStyle = {
 
 export const PROP_STYLE: PropStyle = {
   boardScale: 96,
-  lightBoardScale: 108,
-  dragScale: 2,
+  /** 调参定稿 2026-08（面板：拿起 220 / 放下 200） */
+  lightLiftScale: 220,
+  lightPlacedScale: 200,
   rotateOffset: 180,
   defaultFacing: 0, // 0=N 1=E 2=S 3=W
   trayFacing: 0,
@@ -42,12 +49,22 @@ export function propStyleSnapshot(): string {
   return [
     `PROP_STYLE:`,
     `  boardScale: ${p.boardScale},`,
-    `  lightBoardScale: ${p.lightBoardScale},`,
-    `  dragScale: ${p.dragScale},`,
+    `  lightLiftScale: ${p.lightLiftScale}, // 拿起 % of cell`,
+    `  lightPlacedScale: ${p.lightPlacedScale}, // 放下 % of cell`,
     `  rotateOffset: ${p.rotateOffset},`,
     `  defaultFacing: ${p.defaultFacing}, // 0=N 1=E 2=S 3=W`,
     `  trayFacing: ${p.trayFacing},`,
   ].join('\n');
+}
+
+/** 放下尺寸：格边百分比（已 clamp） */
+export function lightPlacedScalePercent(): number {
+  return Math.max(40, PROP_STYLE.lightPlacedScale);
+}
+
+/** 拿起尺寸：格边百分比（已 clamp） */
+export function lightLiftScalePercent(): number {
+  return Math.max(40, PROP_STYLE.lightLiftScale);
 }
 
 export function applyPropStyleCss(
@@ -55,5 +72,12 @@ export function applyPropStyleCss(
 ): void {
   const p = PROP_STYLE;
   root.style.setProperty('--prop-board-scale', `${p.boardScale}%`);
-  root.style.setProperty('--prop-light-board-scale', `${p.lightBoardScale}%`);
+  root.style.setProperty(
+    '--prop-light-board-scale',
+    `${lightPlacedScalePercent()}%`,
+  );
+  root.style.setProperty(
+    '--prop-light-lift-scale',
+    `${lightLiftScalePercent()}%`,
+  );
 }

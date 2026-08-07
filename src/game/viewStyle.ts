@@ -23,14 +23,21 @@ export type ViewStyle = {
   glowOffsetY: number;
   /**
    * 连接条（纯显示）— light-beam.png，染色/Additive 与光斑一致
-   * beamWidth / beamLength：相对格子边长 %
-   * beamOffsetX / beamOffsetY：相对手电中心的 design px
-   * beamAlpha：连接独立透明度 0–1
+   * beamWidth / beamLength：仅**拿起/扫描**（宽% 格 · 长% 格）
+   * beamOffsetX/Y：拿起灯头锚点（朝向本地 px）
+   * beamPlacedWidth：放下连接宽% 格（独立可调）
+   * beamPlacedOffsetX/Y：放下灯头锚点
+   * beamPlacedLengthScale：放下长度 = 灯头→最远格 × 本值%（100=到尽头，可 >100）
+   * beamAlpha：连接透明度 0–1（拿起/放下共用）
    */
   beamWidth: number;
   beamLength: number;
   beamOffsetX: number;
   beamOffsetY: number;
+  beamPlacedWidth: number;
+  beamPlacedOffsetX: number;
+  beamPlacedOffsetY: number;
+  beamPlacedLengthScale: number;
   beamAlpha: number;
   /**
    * 鬼（格内显示）
@@ -53,8 +60,13 @@ export type ViewStyle = {
   ghostTransparentAlpha: number;
   /** 完全显示鬼 opacity 0–1 */
   ghostRevealedAlpha: number;
-  /** 吸附描边强度 0–1 */
-  snapOutlineAlpha: number;
+  /**
+   * 可落格吸附框（snap-frame.png · Additive）
+   * snapAlpha：透明度 0–1
+   * snapSize：相对格边 %（100 = 铺满一格）
+   */
+  snapAlpha: number;
+  snapSize: number;
   /** 显示格线调试 */
   showGrid: number; // 0 | 1
   /** 显示坐标 */
@@ -73,7 +85,11 @@ export const VIEW_STYLE: ViewStyle = {
   beamWidth: 160,
   beamLength: 150,
   beamOffsetX: 0,
-  beamOffsetY: -80,
+  beamOffsetY: -35, // 拿起连接锚点
+  beamPlacedWidth: 180, // 放下连接宽%
+  beamPlacedOffsetX: 0,
+  beamPlacedOffsetY: -30, // 放下连接锚点
+  beamPlacedLengthScale: 130, // 放下长度：路径距离 × %
   beamAlpha: 0.64,
   ghostSize: 170,
   ghostOffsetX: 8,
@@ -84,7 +100,9 @@ export const VIEW_STYLE: ViewStyle = {
   ghostIdleSquash: 0.06,
   ghostTransparentAlpha: 0.35,
   ghostRevealedAlpha: 1,
-  snapOutlineAlpha: 0.7,
+  /** 调参定稿：吸附框 透明度 0.4 · 大小 150% */
+  snapAlpha: 0.4,
+  snapSize: 150,
   showGrid: 0,
   showCoords: 0,
   showHud: 1,
@@ -113,7 +131,11 @@ export function viewStyleSnapshot(): string {
     `  beamWidth: ${v.beamWidth},`,
     `  beamLength: ${v.beamLength},`,
     `  beamOffsetX: ${v.beamOffsetX},`,
-    `  beamOffsetY: ${v.beamOffsetY},`,
+    `  beamOffsetY: ${v.beamOffsetY}, // 拿起`,
+    `  beamPlacedWidth: ${v.beamPlacedWidth},`,
+    `  beamPlacedOffsetX: ${v.beamPlacedOffsetX},`,
+    `  beamPlacedOffsetY: ${v.beamPlacedOffsetY}, // 放下`,
+    `  beamPlacedLengthScale: ${v.beamPlacedLengthScale},`,
     `  beamAlpha: ${v.beamAlpha},`,
     `  ghostSize: ${v.ghostSize},`,
     `  ghostOffsetX: ${v.ghostOffsetX},`,
@@ -124,7 +146,8 @@ export function viewStyleSnapshot(): string {
     `  ghostIdleSquash: ${v.ghostIdleSquash},`,
     `  ghostTransparentAlpha: ${v.ghostTransparentAlpha},`,
     `  ghostRevealedAlpha: ${v.ghostRevealedAlpha},`,
-    `  snapOutlineAlpha: ${v.snapOutlineAlpha},`,
+    `  snapAlpha: ${v.snapAlpha},`,
+    `  snapSize: ${v.snapSize},`,
     `  showGrid: ${v.showGrid},`,
     `  showCoords: ${v.showCoords},`,
     `  showHud: ${v.showHud},`,
@@ -146,7 +169,8 @@ export function applyViewStyleCss(root: HTMLElement): void {
   root.style.setProperty('--ghost-pivot-y', `${v.ghostPivotY}%`);
   root.style.setProperty('--ghost-transparent-alpha', String(v.ghostTransparentAlpha));
   root.style.setProperty('--ghost-revealed-alpha', String(v.ghostRevealedAlpha));
-  root.style.setProperty('--snap-outline-alpha', String(v.snapOutlineAlpha));
+  root.style.setProperty('--snap-alpha', String(v.snapAlpha));
+  root.style.setProperty('--snap-size', `${v.snapSize}%`);
   root.classList.toggle('debug-grid', v.showGrid >= 0.5);
   root.classList.toggle('debug-coords', v.showCoords >= 0.5);
   root.classList.toggle('hud-hidden', v.showHud < 0.5);

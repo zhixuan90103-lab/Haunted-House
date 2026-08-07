@@ -21,10 +21,10 @@ export type FeelConfig = {
 };
 
 export const FEEL: FeelConfig = {
-  DRAG_OFFSET_Y: -2.0,
+  DRAG_OFFSET_Y: -1.0,
   DRAG_OFFSET_X: 0,
-  DRAG_OFFSET_Y_MIN: -2.0,
-  DRAG_OFFSET_Y_MAX: -2.0,
+  DRAG_OFFSET_Y_MIN: -1.0,
+  DRAG_OFFSET_Y_MAX: -1.0,
   DRAG_LIFT_TRAVEL_CELLS: 1.0,
   DRAG_LIFT_POWER: 1.0,
   POINTER_GAIN_K: 1.6,

@@ -364,11 +364,16 @@ button:active {
  * 全 design 画布，无裁切；仅拿起手电时有像素。
  * plus-lighter = 对背景 Additive；手电关系只走 VIEW_STYLE。
  */
+/**
+ * 扫描光 + 吸附框 Additive 层。
+ * 必须 < .drag-layer(20)，否则吸附框/光会盖住拖动手电。
+ * 仍高于 .board-hit(2)，以便叠到棋盘背景。
+ */
 .board-light-canvas {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 22;
+  z-index: 15;
   width: 390px;
   height: 844px;
   pointer-events: none;
@@ -417,9 +422,9 @@ button:active {
   background: transparent;
 }
 
+/* 可落格：吸附框由 board-light-canvas（plus-lighter）绘制，DOM 仅标记 */
 .cell.snap-ok {
-  outline: 2px solid rgba(56, 189, 248, var(--snap-outline-alpha, 0.7));
-  outline-offset: -2px;
+  outline: none;
 }
 
 #ui-root.game-ui.debug-grid .cell {
@@ -469,7 +474,23 @@ button:active {
   z-index: 3;
 }
 
-.prop-sprite[data-prop-type='light'] {
+/* 盘上手电：left/top/margin/宽高由 paintOccupant 写 px，格心锚定 */
+.prop-sprite[data-prop-type='light'].prop-on-board {
+  position: absolute;
+  flex-shrink: 0;
+  z-index: 5;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+/* 拖拽层手电：尺寸由 inline px；托盘走 tray 规则 */
+.prop-sprite.drag-follow {
+  position: absolute;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.prop-sprite[data-prop-type='light']:not(.prop-on-board):not(.drag-follow) {
   width: var(--prop-light-board-scale, 108%);
   height: var(--prop-light-board-scale, 108%);
 }

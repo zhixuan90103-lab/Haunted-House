@@ -6,8 +6,14 @@
 import type { Board } from '../board';
 import { get } from '../board';
 import { FEEL } from '../feel/defaults';
+import { computeDragSizePx } from '../feel/drag-session';
 import { BOARD_LAYOUT, cellSize, TRAY_LAYOUT } from '../layout';
-import { applyPropStyleCss, PROP_STYLE } from '../propStyle';
+import {
+  applyPropStyleCss,
+  lightLiftScalePercent,
+  lightPlacedScalePercent,
+  PROP_STYLE,
+} from '../propStyle';
 import {
   Dir,
   GhostState,
@@ -114,7 +120,8 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   titleEl.textContent = 'Haunted House';
   const hintEl = document.createElement('p');
   hintEl.className = 'game-hint';
-  hintEl.textContent = '从托盘拖出手电 · 点旋改朝向 · 光照显鬼';
+  hintEl.textContent =
+    '拖出手电扫描找鬼 · 全部找到后才能放格 · 点旋改朝向';
   const restartBtn = document.createElement('button');
   restartBtn.type = 'button';
   restartBtn.id = 'btn-restart';
@@ -280,8 +287,9 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
       if (lit.has(key)) cell.classList.add('lit');
 
       const occ = get(board, x, y);
-      paintOccupant(cell, occ, hidePropId);
+      paintOccupant(cell, occ, hidePropId, cs);
 
+      // 可落格框改由 lightFx canvas Additive 绘制（与光斑同层）
       if (drag?.cell && drag.cell.x === x && drag.cell.y === y) {
         cell.classList.add('snap-ok');
       }
@@ -311,9 +319,9 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
   els.dragLayer.replaceChildren();
   if (drag) {
     const free = propImg(drag.type, drag.facing, 'drag-follow');
+    // 拿起尺寸：lightLiftScale（+ 手感 BOARD_SCALE / pop）
     const full =
-      drag.dragSizePx ??
-      cs * (PROP_STYLE.lightBoardScale / 100) * PROP_STYLE.dragScale;
+      drag.dragSizePx ?? computeDragSizePx(cs, PROP_STYLE.lightLiftScale);
     const scale = drag.scale ?? 1;
     const dragSize = full * scale;
     free.style.width = `${dragSize}px`;
@@ -329,7 +337,8 @@ export function renderBoard(els: DomBoardElements, state: RenderState): void {
   }
 
   applyPropStyleCss(els.root);
-  const trayVis = cs * (PROP_STYLE.lightBoardScale / 100) * FEEL.TRAY_SCALE;
+  // 托盘槽略小于拿起，用 lift 基准 × 托盘尺度（避免跟放下绑死）
+  const trayVis = cs * (lightLiftScalePercent() / 100) * FEEL.TRAY_SCALE * 0.5;
   const trayHit = Math.max(52, trayVis * 1.25);
   els.root.style.setProperty('--prop-tray-size', `${trayHit}px`);
 }
@@ -338,6 +347,7 @@ function paintOccupant(
   cell: HTMLElement,
   occ: Occupant,
   hidePropId: string | undefined,
+  cellPx: number,
 ): void {
   if (occ?.kind === 'wall') {
     cell.classList.add('wall');
@@ -351,6 +361,19 @@ function paintOccupant(
 
   if (occ?.kind === 'prop') {
     if (hidePropId && occ.id === hidePropId) return;
-    cell.append(propImg(occ.type, occ.facing));
+    const spr = propImg(occ.type, occ.facing);
+    // 手电：格心 + lightPlacedScale（与拿起 lightLiftScale 独立）
+    if (occ.type === 'light') {
+      const size = Math.round(cellPx * (lightPlacedScalePercent() / 100));
+      spr.classList.add('prop-on-board');
+      spr.style.width = `${size}px`;
+      spr.style.height = `${size}px`;
+      spr.style.left = '50%';
+      spr.style.top = '50%';
+      spr.style.marginLeft = `${-size / 2}px`;
+      spr.style.marginTop = `${-size / 2}px`;
+      spr.style.transform = 'none'; // 居中用 margin，旋转只在 img 上
+    }
+    cell.append(spr);
   }
 }

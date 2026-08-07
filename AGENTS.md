@@ -20,6 +20,7 @@
 | 实现检索 / 切片 Todo | `docs/IMPLEMENTATION_PLAN.md` · `IMPLEMENTATION_TODO.md` |
 | 光路算法规格 | `docs/OPTICS_SPEC.md` |
 | 交互/会话/扫描表现 | `docs/INTERACTION_SPEC.md` |
+| 扫描震动 | `docs/HAPTICS_SPEC.md` |
 | 资源路径 | `docs/ASSETS.md` |
 | Step1 交接 | `docs/HANDOFF_SLICE0_STEP1.md` |
 | 工程硬约定 / 目录 | 本文 |
@@ -83,12 +84,12 @@ npm run ios
 
 ## 业务怎么加
 
-- 规则：先读/改 **`docs/PRODUCT.md`**（及 OPTICS/INTERACTION），再写代码  
+- 规则：先读/改 **`docs/PRODUCT.md`**（及 OPTICS/INTERACTION/HAPTICS），再写代码  
 - 进度/模块：先扫 **`docs/PROGRESS.md`**  
 - 玩法：改 `src/game/*`（入口 `mountGame`）  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
-- 探查震动：走 `haptics`（S3.1；勿默认光斑换格震）  
+- 扫描震动：设计 **`docs/HAPTICS_SPEC.md`**；实现 `feel/haptic-*` + `scan-haptics`；原生须 `BridgeViewController`  
 - 鬼动画：层 `board-ghost-layer` + CSS 入场 + `ghostIdle` 待机  
 
 ## 刻意不做（工程）

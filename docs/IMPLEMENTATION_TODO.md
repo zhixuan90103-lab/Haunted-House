@@ -123,9 +123,10 @@
 
 ## Slice 3 · 手感与表现
 
-- [x] **S3.1** 震动：扫描会话（开灯/跟距 continuous/出场尖峰/关灯）；`scan-haptics.ts`
+- [x] **S3.1** 震动：HAPTICS_SPEC 全链路（开灯/底噪/近鬼线性/蓄光 charge/过未发现鬼格/出场三连 mute 底噪/关灯）；`feel/haptic-*` + 📳；SceneDelegate→BridgeViewController
 - [x] **S3.2** 扫描 beam/glow Additive（Step1 已做；放置光束可选增强）
 - [x] **S3.3** 鬼贴图 + 入场/待机（Step1）；道具/房间可继续皮
+- [x] **S3.1b** 重制按钮：鬼隐藏 + 道具回托盘 + 停扫描震动（R15）
 - [ ] **S3.4** 音效（可选）
 - [ ] **S3.5** 安全区下托盘/HUD 不挡操作
 
@@ -154,13 +155,10 @@
 
 | Slice | 进度 |
 |-------|------|
-| 0 最小可玩 | ~65%（Step1 拖灯找鬼+光效+鬼动画+dwell；缺镜/相机/重开） |
+| 0 最小可玩 | ~75%（Step1 + 震动 + 重制；缺镜/相机/拍照） |
 | 1 四件齐 | 算法有、UI 未接 |
 | 2 多关 | 未开始 |
-| 3 手感表现 | 光效/鬼皮部分完成；震动/音效未做 |
-| 1 四件齐 | 0%（optics 分支预留） |
-| 2 多关 | 0% |
-| 3 表现 | 0% |
+| 3 手感表现 | 光效/鬼皮/震动已做；音效未做 |
 
 ---
 
@@ -171,6 +169,8 @@
 | v0.1 | 初版实现 todolist（Slice 0–3） |
 | v0.2 | 吸收 NotebookLM 审稿：单面镜、locked、canPlace 鬼格、safe-area、R21 |
 | v0.3 | **Step 1 交付**：types/optics/ghosts/board/level + DOM 拖灯扫鬼；勾选 A1/A4–A6/C1/C3/C5/D1–D2/D4 |
+| v0.4 | S3.1 震动 + HAPTICS_SPEC + 重制 UI；进度摘要修正 |
+| v0.5 | 蓄光 continuous、出场 mute 底噪、定稿参数、手感抬升 Y=-1 |
 
 ---
 

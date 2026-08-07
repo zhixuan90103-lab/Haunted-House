@@ -12,6 +12,7 @@
 | [docs/PROGRESS.md](./docs/PROGRESS.md) | **实现进度 / 已改内容总览** |
 | [docs/OPTICS_SPEC.md](./docs/OPTICS_SPEC.md) | 光路与鬼状态算法 |
 | [docs/INTERACTION_SPEC.md](./docs/INTERACTION_SPEC.md) | 交互 / 扫描表现 / 会话 |
+| [docs/HAPTICS_SPEC.md](./docs/HAPTICS_SPEC.md) | **扫描震动设计** |
 | [docs/IMPLEMENTATION_TODO.md](./docs/IMPLEMENTATION_TODO.md) | Todo 勾选 |
 | [docs/ASSETS.md](./docs/ASSETS.md) | 美术资源定稿 |
 | [docs/HANDOFF_SLICE0_STEP1.md](./docs/HANDOFF_SLICE0_STEP1.md) | Step 1 交接 |
@@ -24,13 +25,15 @@
 固定房间里用手电等铺光路，让所有鬼同时完全显示，再拍照合影过关。  
 细则见 **[docs/PRODUCT.md](./docs/PRODUCT.md)**。
 
-## 当前进度（Step 1）
+## 当前进度（Step 1 + S3.1）
 
 - 托盘拖灯、放置、点旋；扫描光斑 + 连接条（Additive）
 - 放置后直线 lit；鬼 **连续照亮 1s** 才首次出场
-- 入场动画 + 待机漂浮；独立鬼层与调参面板  
+- 入场动画 + 待机漂浮；独立鬼层；HUD **重制**
+- **扫描震动**（开灯 / 底噪 / 近鬼线性 / 蓄光 1s / 过格 / 出场三连 mute 底噪）；左下 📳 调参  
+  设计见 [docs/HAPTICS_SPEC.md](./docs/HAPTICS_SPEC.md)
 
-完整清单：**[docs/PROGRESS.md](./docs/PROGRESS.md)**。
+完整清单：**[docs/PROGRESS.md](./docs/PROGRESS.md)**（v0.6）。
 
 ## 30 秒上手
 

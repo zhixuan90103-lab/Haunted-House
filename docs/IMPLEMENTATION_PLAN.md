@@ -49,7 +49,7 @@
 | 关卡数据长什么样 | R14 JSON schema |
 | 重开一致性 | R15 深拷贝快照 |
 | 最小怎么画 | R11：Slice0 优先 DOM 格网 |
-| 震动 | R12：距离档位 + throttle |
+| 震动 | R12 / **HAPTICS_SPEC**：扫描会话（开灯/底噪/近鬼线性/过格/出场三连） |
 | 会话相位 | R13：Playing / Camera / Won |
 | locked 场景道具 | OPTICS 补漏：locked 不可拖 |
 
@@ -153,7 +153,7 @@ UI (#ui-root: tray, board-hit, camera modal)
 | ID | 主题 | 状态 | 文档 |
 |----|------|------|------|
 | R11 | 最小表现策略 | **完成** | INTERACTION |
-| R12 | 震动 | **完成** | INTERACTION |
+| R12 | 震动 | **完成** | HAPTICS_SPEC · INTERACTION |
 | R13 | 相机会话机 | **完成** | INTERACTION |
 | R14 | 关卡 JSON | **完成** | INTERACTION |
 | R15 | 重开快照 | **完成** | INTERACTION |

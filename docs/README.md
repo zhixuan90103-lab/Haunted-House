@@ -4,11 +4,13 @@
 |------|------|
 | [PRODUCT.md](./PRODUCT.md) | **产品与玩法真源**（房间光路捉鬼） |
 | [PROGRESS.md](./PROGRESS.md) | **实现进度 / 已落地修改总览**（新会话优先） |
-| [LEVEL_DESIGN.md](./LEVEL_DESIGN.md) | **谜题/关卡如何制作** |
+| [LEVEL_DESIGN.md](./LEVEL_DESIGN.md) | **谜题/关卡如何制作**（通用工序） |
+| [LEVEL_PUZZLE_RESEARCH_PLAN.md](./LEVEL_PUZZLE_RESEARCH_PLAN.md) | **关卡谜题检索计划**（Laser Maze / 路径规划 / 精妙标准） |
 | [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | **实现检索计划**（模块拆分、切片） |
 | [IMPLEMENTATION_TODO.md](./IMPLEMENTATION_TODO.md) | **实现 Todo 清单**（完成度勾选） |
 | [OPTICS_SPEC.md](./OPTICS_SPEC.md) | **光路/鬼状态算法**（含首次出场 dwell） |
 | [INTERACTION_SPEC.md](./INTERACTION_SPEC.md) | **交互/会话/扫描表现/关卡 JSON** |
+| [HAPTICS_SPEC.md](./HAPTICS_SPEC.md) | **扫描震动设计**（会话 / 近鬼 / 出场三连） |
 | [ASSETS.md](./ASSETS.md) | **美术资源**（定稿路径、一物一图） |
 | [HANDOFF_SLICE0_STEP1.md](./HANDOFF_SLICE0_STEP1.md) | **Step 1 交接** |
 | [CONSISTENCY_REVIEW.md](./CONSISTENCY_REVIEW.md) | 规格自洽评估 |
@@ -33,6 +35,7 @@
 | 玩法 / 胜负 / 鬼规则 | `PRODUCT.md` → OPTICS / INTERACTION → 代码 |
 | 光路算法 | `OPTICS_SPEC.md` → `optics.ts` / `ghosts.ts` |
 | 拖放 / 扫描表现 / 会话 | `INTERACTION_SPEC.md` → `input` / `view/*` |
+| 扫描震动 | `HAPTICS_SPEC.md` → `feel/haptic-*` / `scan-haptics` |
 | 资源路径 | `ASSETS.md` + `public/` |
 | 完成了哪些功能 | `PROGRESS.md` + `IMPLEMENTATION_TODO.md` |
 | 工程坑 / 架构决策 | `ENGINEERING.md` |

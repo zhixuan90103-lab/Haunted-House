@@ -82,6 +82,8 @@ Xcode → BridgeViewController
 | 设计分辨率 | `adapt/design.ts` + `style.css` |
 | 棋盘/托盘布局 | `game/layout.ts` |
 | 光效/鬼 view 旋钮 | `game/viewStyle.ts` |
-| 手感 | `game/feel/defaults.ts` |
-| 震动原生 | `plugins/native-haptics/*.swift` + bootstrap |
+| 手感2（抬升等） | `game/feel/defaults.ts`（默认抬升 Y=-1） |
+| 扫描震动参数 | `game/feel/haptic-config.ts`（设计：`docs/HAPTICS_SPEC.md`） |
+| 震动原生 | `plugins/native-haptics/*.swift` + bootstrap；**SceneDelegate→BridgeViewController** |
+| 重制本关 | HUD `#btn-restart` → `mountGame().restart` / `loadLevel` |
 | 启动 | `index.html` + `main.ts` |

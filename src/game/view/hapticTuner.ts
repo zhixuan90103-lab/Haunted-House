@@ -12,6 +12,12 @@ import {
   setScanHaptic,
   type ScanHapticConfig,
 } from '../feel/haptic-config';
+import {
+  playGhostPassPattern,
+  playOpenPattern,
+  playRevealPatternAsync,
+  startLeveledContinuous,
+} from '../feel/haptic-patterns';
 
 export type HapticTunerHandle = {
   dispose: () => void;
@@ -38,6 +44,8 @@ const SLIDERS: SliderDef[] = [
   { section: '② 底噪 continuous', key: 'peakIntensity', label: '近鬼 intensity', min: 0, max: 0.5, step: 0.01 },
   { section: '② 底噪 continuous', key: 'peakSharpness', label: '近鬼 sharpness', min: 0, max: 1, step: 0.01 },
   { section: '② 底噪 continuous', key: 'nearRadius', label: '线性半径(格)', min: 1, max: 6, step: 1 },
+  { section: '② 底噪 continuous', key: 'chargePeakIntensity', label: '蓄光满 intensity', min: 0, max: 1, step: 0.01 },
+  { section: '② 底噪 continuous', key: 'chargePeakSharpness', label: '蓄光满 sharpness', min: 0, max: 1, step: 0.01 },
   { section: '② 底噪 continuous', key: 'updateIntervalMs', label: '更新间隔 ms', min: 16, max: 200, step: 2 },
 
   { section: '③ 过鬼格', key: 'ghostPassIntensity', label: '过鬼 intensity', min: 0, max: 1, step: 0.01 },
@@ -73,7 +81,6 @@ function formatVal(key: keyof ScanHapticConfig, n: number): string {
     key === 'updateIntervalMs' ||
     key === 'pulseFallbackMs' ||
     key === 'renewBeforeMs' ||
-    key === 'farDist' ||
     key === 'nearRadius' ||
     key === 'ghostPassCooldownMs' ||
     key === 'reveal1to2Ms' ||
@@ -173,86 +180,47 @@ export function mountHapticTuner(parent: HTMLElement): HapticTunerHandle {
     setStatus(r.ok ? 'buzz ok（AudioServices）' : `buzz fail: ${r.reason ?? haptics.getLastError()}`);
   });
 
-  const styleFrom = (level: number) =>
-    level < 0.28 ? 'soft' : level < 0.5 ? 'light' : level < 0.75 ? 'medium' : 'heavy';
-
   mkTest('开灯', async () => {
-    const i = SCAN_HAPTIC.openIntensity;
-    const s = SCAN_HAPTIC.openSharpness;
-    const t = await haptics.playTransient(i, s);
-    if (SCAN_HAPTIC.useImpactOpen >= 0.5) {
-      await haptics.impact(styleFrom(i) as 'soft' | 'light' | 'medium' | 'heavy', 10, {
-        intensity: i,
-      });
-    }
+    playOpenPattern();
     setStatus(
-      t.ok
-        ? `开灯 i=${i.toFixed(2)} s=${s.toFixed(2)}`
-        : `开灯 fail: ${t.reason ?? haptics.getLastError()}`,
+      `开灯 i=${SCAN_HAPTIC.openIntensity.toFixed(2)} s=${SCAN_HAPTIC.openSharpness.toFixed(2)}`,
     );
   });
 
   mkTest('底噪持续', async () => {
     testContinuous = true;
-    const start = await haptics.startContinuous({
-      intensity: 1,
-      sharpness: 1,
-      duration: Math.min(30, SCAN_HAPTIC.continuousDurationS),
+    const ok = await startLeveledContinuous({
+      intensity: SCAN_HAPTIC.floorIntensity,
+      sharpness: SCAN_HAPTIC.floorSharpness,
     });
-    if (start.ok) {
-      await haptics.updateContinuous({
-        intensity: SCAN_HAPTIC.floorIntensity,
-        sharpness: SCAN_HAPTIC.floorSharpness,
-      });
-    }
     setStatus(
-      start.ok
+      ok
         ? `底噪 i=${SCAN_HAPTIC.floorIntensity.toFixed(2)}`
-        : `continuous fail: ${start.reason ?? haptics.getLastError()}`,
+        : `continuous fail: ${haptics.getLastError()}`,
     );
   });
 
   mkTest('近鬼持续', async () => {
     testContinuous = true;
-    const start = await haptics.startContinuous({
-      intensity: 1,
-      sharpness: 1,
-      duration: Math.min(30, SCAN_HAPTIC.continuousDurationS),
+    const ok = await startLeveledContinuous({
+      intensity: SCAN_HAPTIC.peakIntensity,
+      sharpness: SCAN_HAPTIC.peakSharpness,
     });
-    if (start.ok) {
-      await haptics.updateContinuous({
-        intensity: SCAN_HAPTIC.peakIntensity,
-        sharpness: SCAN_HAPTIC.peakSharpness,
-      });
-    }
     setStatus(
-      start.ok
+      ok
         ? `近鬼 i=${SCAN_HAPTIC.peakIntensity.toFixed(2)}`
-        : `continuous fail: ${start.reason ?? haptics.getLastError()}`,
+        : `continuous fail: ${haptics.getLastError()}`,
     );
   });
 
   mkTest('过鬼格', async () => {
-    const i = SCAN_HAPTIC.ghostPassIntensity;
-    const r = await haptics.playTransient(i, SCAN_HAPTIC.ghostPassSharpness);
-    setStatus(r.ok ? `过鬼 i=${i.toFixed(2)}` : `过鬼 fail: ${r.reason ?? haptics.getLastError()}`);
+    playGhostPassPattern();
+    setStatus(`过鬼 i=${SCAN_HAPTIC.ghostPassIntensity.toFixed(2)}`);
   });
 
   mkTest('出场三连', async () => {
+    await playRevealPatternAsync();
     const h = SCAN_HAPTIC;
-    const hit = async (i: number, s: number, ui: boolean) => {
-      await haptics.playTransient(i, s);
-      if (ui && h.useImpactReveal >= 0.5) {
-        await haptics.impact(styleFrom(i) as 'soft' | 'light' | 'medium' | 'heavy', 10, {
-          intensity: i,
-        });
-      }
-    };
-    await hit(h.reveal1Intensity, h.reveal1Sharpness, true);
-    await new Promise((r) => setTimeout(r, Math.max(0, h.reveal1to2Ms)));
-    await hit(h.reveal2Intensity, h.reveal2Sharpness, false);
-    await new Promise((r) => setTimeout(r, Math.max(0, h.reveal2to3Ms)));
-    await hit(h.reveal3Intensity, h.reveal3Sharpness, false);
     setStatus(
       `出场 ${h.reveal1to2Ms}+${h.reveal2to3Ms}ms · ${h.reveal1Intensity.toFixed(2)}/${h.reveal2Intensity.toFixed(2)}/${h.reveal3Intensity.toFixed(2)}`,
     );

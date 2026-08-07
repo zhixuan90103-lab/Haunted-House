@@ -91,15 +91,18 @@ renderer.setSize(390, 844)          // 始终设计分辨率
 
 ## 7. Haptics
 
-真源：`plugins/native-haptics/`  
-JS：`src/utils/haptics.ts`（`registerPlugin('AdvancedHaptics')`）  
+| 层 | 路径 |
+|----|------|
+| 设计 | `docs/HAPTICS_SPEC.md` |
+| 玩法参数/会话 | `src/game/feel/haptic-{config,math,patterns}.ts` · `scan-haptics.ts` |
+| JS 桥 | `src/utils/haptics.ts` → `registerPlugin('AdvancedHaptics')` |
+| 原生真源 | `plugins/native-haptics/` → `ios:bootstrap` |
+
 注册：`BridgeViewController` → `registerPluginInstance(AdvancedHapticsPlugin)`  
 
-**硬坑（2026-08）：** `SceneDelegate` 必须用 `BridgeViewController()`，**禁止** `CAPBridgeViewController()`。  
-裸 `CAPBridgeViewController` 不会跑本地插件注册 → 诊断显示 `platform=ios` 但 `未接通`。  
+**硬坑：** `SceneDelegate` 必须 `BridgeViewController()`，禁止裸 `CAPBridgeViewController()`（否则 `platform=ios` 但插件未接通）。  
 
-业务震动节奏写在游戏层，不要改插件除非新增原生方法。  
-改 Swift 后：`npm run ios` / Xcode Run 重装真机。
+业务节奏只改 `feel/haptic-*`；改 Swift 后 Xcode 重装真机。
 
 ## 8. iOS 工作流
 

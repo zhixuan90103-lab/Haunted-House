@@ -1,23 +1,15 @@
 /**
- * 扫描震动参数（R12）。
- *
- * 模型：
- *  - 开灯：一次瞬态
- *  - 扫描中：固定很浅 continuous 底噪
- *  - 近鬼：按曼哈顿线性抬升 continuous
- *  - 光斑滑入未发现鬼格：轻瞬态
- *  - 鬼首次 everLit：三段可调瞬态
+ * 扫描震动参数表（设计见 docs/HAPTICS_SPEC.md）。
+ * 调参面板实时改写；复制后回写 DEFAULT。
  */
 
 export type ScanHapticConfig = {
+  // —— 开灯 ——
   openIntensity: number;
   openSharpness: number;
   openToContinuousMs: number;
 
-  /**
-   * 出场三段瞬态：
-   * t=0 → #1；+reveal1to2Ms → #2；+reveal2to3Ms → #3
-   */
+  // —— 出场三连：t=0 → #1；+#1→#2 ms → #2；+#2→#3 ms → #3 ——
   reveal1Intensity: number;
   reveal1Sharpness: number;
   reveal1to2Ms: number;
@@ -27,37 +19,45 @@ export type ScanHapticConfig = {
   reveal3Intensity: number;
   reveal3Sharpness: number;
 
+  // —— continuous：底噪 / 贴鬼 peak / 线性半径（曼哈顿格）——
   floorIntensity: number;
   floorSharpness: number;
   peakIntensity: number;
   peakSharpness: number;
   nearRadius: number;
 
+  /**
+   * 首次出场蓄光（压住未发现鬼格、与 dwell 同钟）：
+   * progress 0→1 时 continuous 从 peak 线性爬到 chargePeak
+   */
+  chargePeakIntensity: number;
+  chargePeakSharpness: number;
+
+  // —— 过未发现鬼格 ——
   ghostPassIntensity: number;
   ghostPassSharpness: number;
   ghostPassCooldownMs: number;
 
+  // —— 引擎 ——
   updateIntervalMs: number;
   continuousDurationS: number;
   renewBeforeMs: number;
   pulseFallbackMs: number;
 
+  // —— UIKit 叠加（0/1）——
   useImpactOpen: number;
-  /** 出场第 1 下是否叠 UIKit（避免三连 UIKit 过吵） */
   useImpactReveal: number;
   useImpactGhostPass: number;
-
-  farDist: number;
 };
 
+/** 定稿默认（真机调参回写） */
 export const SCAN_HAPTIC: ScanHapticConfig = {
   openIntensity: 0.6,
   openSharpness: 0.8,
   openToContinuousMs: 65,
 
-  // 出场三连
-  reveal1Intensity: 0.6,
-  reveal1Sharpness: 0.2,
+  reveal1Intensity: 0.53,
+  reveal1Sharpness: 0.46,
   reveal1to2Ms: 40,
   reveal2Intensity: 0.4,
   reveal2Sharpness: 0.29,
@@ -71,6 +71,9 @@ export const SCAN_HAPTIC: ScanHapticConfig = {
   peakSharpness: 0.1,
   nearRadius: 3,
 
+  chargePeakIntensity: 0.35,
+  chargePeakSharpness: 0.15,
+
   ghostPassIntensity: 0.51,
   ghostPassSharpness: 0.18,
   ghostPassCooldownMs: 180,
@@ -83,8 +86,6 @@ export const SCAN_HAPTIC: ScanHapticConfig = {
   useImpactOpen: 1,
   useImpactReveal: 1,
   useImpactGhostPass: 0,
-
-  farDist: 5,
 };
 
 export const DEFAULT_SCAN_HAPTIC: ScanHapticConfig = { ...SCAN_HAPTIC };
@@ -94,9 +95,16 @@ export function setScanHaptic(partial: Partial<ScanHapticConfig>): void {
   if (SCAN_HAPTIC.continuousDurationS > 30) {
     SCAN_HAPTIC.continuousDurationS = 30;
   }
-  if (SCAN_HAPTIC.nearRadius < 0) SCAN_HAPTIC.nearRadius = 0;
-  if (SCAN_HAPTIC.farDist < 1) SCAN_HAPTIC.farDist = 1;
-  for (const k of ['reveal1to2Ms', 'reveal2to3Ms'] as const) {
+  if (SCAN_HAPTIC.nearRadius < 1) SCAN_HAPTIC.nearRadius = 1;
+  for (const k of [
+    'openToContinuousMs',
+    'reveal1to2Ms',
+    'reveal2to3Ms',
+    'ghostPassCooldownMs',
+    'updateIntervalMs',
+    'renewBeforeMs',
+    'pulseFallbackMs',
+  ] as const) {
     if (SCAN_HAPTIC[k] < 0) SCAN_HAPTIC[k] = 0;
   }
 }
@@ -114,6 +122,7 @@ export function scanHapticSnapshot(): string {
     `  floorIntensity: ${h.floorIntensity}, floorSharpness: ${h.floorSharpness},`,
     `  peakIntensity: ${h.peakIntensity}, peakSharpness: ${h.peakSharpness},`,
     `  nearRadius: ${h.nearRadius},`,
+    `  chargePeakIntensity: ${h.chargePeakIntensity}, chargePeakSharpness: ${h.chargePeakSharpness},`,
     `  ghostPassIntensity: ${h.ghostPassIntensity}, ghostPassSharpness: ${h.ghostPassSharpness},`,
     `  ghostPassCooldownMs: ${h.ghostPassCooldownMs},`,
     `  reveal1Intensity: ${h.reveal1Intensity}, reveal1Sharpness: ${h.reveal1Sharpness},`,

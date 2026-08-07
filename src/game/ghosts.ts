@@ -84,6 +84,14 @@ export function allRevealed(ghosts: Ghost[]): boolean {
   return ghosts.length > 0 && ghosts.every((g) => g.state === GhostState.Revealed);
 }
 
+/**
+ * 全部「找出来」= 每只鬼至少 everLit 一次（含 Transparent / Revealed）。
+ * 用于：未全发现前禁止把手电放到格子上（仅扫描）。
+ */
+export function allGhostsFound(ghosts: Ghost[]): boolean {
+  return ghosts.length > 0 && ghosts.every((g) => g.everLit);
+}
+
 export function resetGhosts(ghosts: Array<{ id: string; x: number; y: number }>): Ghost[] {
   return ghosts.map((g) => ({
     id: g.id,

@@ -35,6 +35,11 @@ export type InputCallbacks = {
   onDragMove: () => void;
   getLayout: () => StageLayout | null;
   getStage: () => HTMLElement;
+  /**
+   * 额外放置门禁（在 canPlace 之后）。
+   * 返回 false 时不吸附、不落格（松手走 cancel）。
+   */
+  canCommitDrop?: (drag: DragGhost, x: number, y: number) => boolean;
 };
 
 function clientToDesignLocal(
@@ -62,6 +67,7 @@ function syncGhostFromSession(
   ghost: DragGhost,
   session: DragSession,
   board: Board,
+  canCommitDrop?: (drag: DragGhost, x: number, y: number) => boolean,
 ): void {
   ghost.designX = session.frameCx;
   ghost.designY = session.frameCy;
@@ -74,7 +80,11 @@ function syncGhostFromSession(
   // 吸附用视觉中心（块中心），不是指尖
   const cell = designToCell(session.frameCx, session.frameCy);
   const ignore = ghost.source === 'board' ? ghost.propId : undefined;
-  if (cell && canPlace(board, cell.x, cell.y, ignore)) {
+  if (
+    cell &&
+    canPlace(board, cell.x, cell.y, ignore) &&
+    (canCommitDrop?.(ghost, cell.x, cell.y) ?? true)
+  ) {
     ghost.cell = cell;
   } else {
     ghost.cell = null;
@@ -114,7 +124,12 @@ export function attachInput(
         return;
       }
       tickSmooth(session);
-      syncGhostFromSession(activeDrag, session, cb.getBoard());
+      syncGhostFromSession(
+        activeDrag,
+        session,
+        cb.getBoard(),
+        cb.canCommitDrop,
+      );
       cb.setDrag({ ...activeDrag });
       cb.onDragMove();
       rafId = requestAnimationFrame(loop);
@@ -131,11 +146,7 @@ export function attachInput(
     fromTray: boolean,
   ) => {
     const cell = cellSize();
-    const dragSizePx = computeDragSizePx(
-      cell,
-      PROP_STYLE.lightBoardScale,
-      PROP_STYLE.dragScale,
-    );
+    const dragSizePx = computeDragSizePx(cell, PROP_STYLE.lightLiftScale);
     session = createDragSession({
       anchorCx,
       anchorCy,
@@ -146,7 +157,12 @@ export function attachInput(
       dragSizePx,
     });
     activeDrag = ghost;
-    syncGhostFromSession(activeDrag, session, cb.getBoard());
+    syncGhostFromSession(
+      activeDrag,
+      session,
+      cb.getBoard(),
+      cb.canCommitDrop,
+    );
     cb.setDrag({ ...activeDrag });
     cb.onDragMove();
     startRaf();
@@ -205,7 +221,12 @@ export function attachInput(
       const d = clientToDesignLocal(e.clientX, e.clientY, stage, layout);
       samplePointer(session, d.x, d.y);
       chaseTargetOnPointer(session);
-      syncGhostFromSession(activeDrag, session, cb.getBoard());
+      syncGhostFromSession(
+        activeDrag,
+        session,
+        cb.getBoard(),
+        cb.canCommitDrop,
+      );
     }
 
     stopRaf();

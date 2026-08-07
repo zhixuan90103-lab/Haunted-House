@@ -168,13 +168,16 @@ export function tickSmooth(session: DragSession): void {
   }
 }
 
-/** 盘上拖动目标边长 = cell × light比例 × pop */
+/**
+ * 拿起/拖动手电目标边长（design px）。
+ * liftScalePercent：相对格边 %（PROP_STYLE.lightLiftScale）
+ * 另乘 FEEL.BOARD_SCALE × DRAG_SCALE_POP（手感2 微调；主尺寸用 lightLiftScale）
+ */
 export function computeDragSizePx(
   cell: number,
-  lightBoardScalePercent: number,
-  dragScale: number,
+  liftScalePercent: number,
 ): number {
-  const light = Math.max(0.4, lightBoardScalePercent / 100);
-  const pop = FEEL.DRAG_SCALE_POP * Math.max(0.5, dragScale);
-  return cell * FEEL.BOARD_SCALE * light * pop;
+  const lift = Math.max(0.4, liftScalePercent / 100);
+  const feel = FEEL.BOARD_SCALE * Math.max(0.5, FEEL.DRAG_SCALE_POP);
+  return cell * lift * feel;
 }

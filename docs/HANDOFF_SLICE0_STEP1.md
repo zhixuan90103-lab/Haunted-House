@@ -17,7 +17,8 @@
 4. **放置：** 直线 lit（多灯并集）；光源格不亮  
 5. 鬼：Hidden →（连续照 **1s**）Revealed + 入场 → 待机；离光 Transparent  
 
-**不做：** 镜/半透/漫射 UI、拍照过关、Camera/Won、探查震动档位。
+**不做（Step1 当时）：** 镜/半透/漫射 UI、拍照过关、Camera/Won。  
+**后续已补：** 扫描震动见 `docs/HAPTICS_SPEC.md` + `PROGRESS` v0.5；HUD 重制见 R15。
 
 ---
 

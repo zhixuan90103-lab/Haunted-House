@@ -56,10 +56,10 @@ const SECTION_TITLE: Record<Group, string> = {
 };
 
 const SLIDERS: SliderDef[] = [
-  // —— 外观 / 拿起 ——
-  { group: 'prop', key: 'boardScale', label: '盘上大小%', min: 40, max: 160, step: 1 },
-  { group: 'prop', key: 'lightBoardScale', label: '拿起基准%', min: 50, max: 220, step: 1 },
-  { group: 'prop', key: 'dragScale', label: '拿起大小×', min: 0.5, max: 2.2, step: 0.01 },
+  // —— 外观 / 手电尺寸（% 相对格边，100 = 一格）——
+  { group: 'prop', key: 'boardScale', label: '其它道具盘上%', min: 40, max: 160, step: 1 },
+  { group: 'prop', key: 'lightLiftScale', label: '手电拿起%', min: 50, max: 320, step: 1 },
+  { group: 'prop', key: 'lightPlacedScale', label: '手电放下%', min: 40, max: 320, step: 1 },
   { group: 'prop', key: 'rotateOffset', label: '旋转偏移°', min: -180, max: 180, step: 1 },
   { group: 'prop', key: 'defaultFacing', label: '默认朝向', min: 0, max: 3, step: 1 },
   { group: 'prop', key: 'trayFacing', label: '托盘朝向', min: 0, max: 3, step: 1 },
@@ -97,10 +97,14 @@ const SLIDERS: SliderDef[] = [
   { group: 'view', key: 'glowOffsetX', label: '光斑偏移Xpx', min: -80, max: 80, step: 1 },
   { group: 'view', key: 'glowOffsetY', label: '光斑偏移Ypx', min: -80, max: 80, step: 1 },
   // —— 表现：连接（纯显示：宽、长、位置、透明度）——
-  { group: 'view', key: 'beamWidth', label: '连接宽度%', min: 10, max: 250, step: 5 },
-  { group: 'view', key: 'beamLength', label: '连接长度%', min: 10, max: 300, step: 5 },
-  { group: 'view', key: 'beamOffsetX', label: '连接位置X', min: -120, max: 120, step: 1 },
-  { group: 'view', key: 'beamOffsetY', label: '连接位置Y', min: -120, max: 120, step: 1 },
+  { group: 'view', key: 'beamWidth', label: '拿起连接宽度%', min: 10, max: 250, step: 5 },
+  { group: 'view', key: 'beamLength', label: '拿起连接长度%', min: 10, max: 300, step: 5 },
+  { group: 'view', key: 'beamOffsetX', label: '拿起连接X', min: -120, max: 120, step: 1 },
+  { group: 'view', key: 'beamOffsetY', label: '拿起连接Y', min: -120, max: 120, step: 1 },
+  { group: 'view', key: 'beamPlacedWidth', label: '放下连接宽度%', min: 10, max: 300, step: 5 },
+  { group: 'view', key: 'beamPlacedLengthScale', label: '放下连接长度%', min: 20, max: 250, step: 1 },
+  { group: 'view', key: 'beamPlacedOffsetX', label: '放下连接X', min: -120, max: 120, step: 1 },
+  { group: 'view', key: 'beamPlacedOffsetY', label: '放下连接Y', min: -120, max: 120, step: 1 },
   { group: 'view', key: 'beamAlpha', label: '连接透明度', min: 0, max: 1, step: 0.02 },
   { group: 'view', key: 'ghostSize', label: '鬼大小%', min: 40, max: 200, step: 2 },
   { group: 'view', key: 'ghostOffsetX', label: '鬼位置X', min: -40, max: 40, step: 1 },
@@ -111,7 +115,8 @@ const SLIDERS: SliderDef[] = [
   { group: 'view', key: 'ghostIdleSquash', label: '待机挤压', min: 0, max: 0.15, step: 0.01 },
   { group: 'view', key: 'ghostTransparentAlpha', label: '透明鬼α', min: 0.1, max: 1, step: 0.05 },
   { group: 'view', key: 'ghostRevealedAlpha', label: '显示鬼α', min: 0.3, max: 1, step: 0.05 },
-  { group: 'view', key: 'snapOutlineAlpha', label: '吸附描边', min: 0, max: 1, step: 0.05 },
+  { group: 'view', key: 'snapAlpha', label: '吸附框透明度', min: 0, max: 1, step: 0.02 },
+  { group: 'view', key: 'snapSize', label: '吸附框大小%', min: 40, max: 200, step: 1 },
   { group: 'view', key: 'showGrid', label: '显示格线', min: 0, max: 1, step: 1 },
   { group: 'view', key: 'showCoords', label: '显示坐标', min: 0, max: 1, step: 1 },
   { group: 'view', key: 'showHud', label: '显示标题', min: 0, max: 1, step: 1 },
@@ -120,7 +125,6 @@ const SLIDERS: SliderDef[] = [
 const FACING_LABEL = ['N↑', 'E→', 'S↓', 'W←'] as const;
 
 const FLOAT_KEYS = new Set([
-  'dragScale',
   'POINTER_GAIN_K',
   'TRAY_SCALE',
   'BOARD_SCALE',
@@ -137,7 +141,7 @@ const FLOAT_KEYS = new Set([
   'ghostIdleSquash',
   'ghostTransparentAlpha',
   'ghostRevealedAlpha',
-  'snapOutlineAlpha',
+  'snapAlpha',
 ]);
 
 function readVal(def: SliderDef): number {

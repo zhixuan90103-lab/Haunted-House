@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| 版本 | **v0.2** |
+| 版本 | **v0.4** |
 | 状态 | 冻结基线 + Step1 表现扩展（扫描光效 / 鬼层） |
 | 依赖 | `PRODUCT.md`、`OPTICS_SPEC.md`、`adapt/design.ts` |
 
@@ -106,12 +106,17 @@ Idle
   → pointerdown on tray item → DragFromTray { type, facing: default }
   → pointerdown on board prop → DragBoard { id }  (锁盘时禁用)
 Drag*
-  → pointermove → 更新 design 位；尝试 designToCell + canPlace
+  → pointermove → 更新 design 位；尝试 designToCell + canPlace + canCommitDrop
   → pointerup 合法格 → place / move；重算 optics + ghosts
   → pointerup 非法/盘外 → 回托盘或回原格
 Idle
   → click (无显著移动) on board prop → rotateCW facing；重算
 ```
+
+### 手电落格门禁（设计）
+
+- **未全部找到**（存在 `!everLit` 的鬼）时：`light` **禁止** `canCommitDrop` → 不吸附、松手回托盘；扫描光/震动照旧。
+- **全部 everLit 后**：才允许把手电放到空格；落格精灵锚在**格心**，尺寸与抬起 `computeDragSizePx` 一致。
 
 ### 点击 vs 拖动阈值
 
@@ -230,10 +235,13 @@ function restart():
   drag = null
   // ghosts: Hidden, everLit false
   // tray 恢复 count
+  // scanHaptics.end()
   resolve()
 ```
 
 不要依赖「撤销栈」做重开。
+
+**当前实现：** HUD「重制」→ `loadLevel(level_001)` + `resetGhostAppear` + `scanHaptics.end()`（单关硬编码；多关后改为当前 def 快照）。
 
 ---
 
@@ -258,7 +266,11 @@ function restart():
 ### R11.2 放置态
 
 - 完整 `computeLit` 直线布光；多 light 并集。  
-- 可不画扫描光效；格 lit 标记可选。
+- **发射表现：** 盘上每盏 light 在 `board-light-canvas`：  
+  - 直线 `castStraightLightPath`：空/鬼继续，墙/道具挡，出界止 → **无障碍则到棋盘内最远格**  
+  - beam 从灯心拉到最远亮格心；**光斑在最远格心**（非固定 glowForward）  
+  - 拖起中的灯不画放置发射；贴脸墙（0 亮格）不画  
+- 格 lit 标记可选（当前透明）。
 
 ### R11.3 鬼表现
 
@@ -279,21 +291,20 @@ function restart():
 
 ## R12 · 震动（扫描会话）
 
-**范围：** 仅 **握着手电扫描**（`drag.type === 'light'`）。放置后盘上灯亮 **不震**。
+**真源设计：** `docs/HAPTICS_SPEC.md`（会话边界、近鬼线性、过格、出场三连、模块分层）。
 
-```
-① 开灯：一次 transient（openIntensity / openSharpness）
-② 持续：continuous 底噪（floor*）；仅相对 **未发现** 鬼（!everLit）
-   · dist ≥ nearRadius → floor；dist=0 → peak；中间 **线性** 插值
-③ 过鬼格：光斑换格且落在 **未发现** 鬼格 → 轻 transient（ghostPass*）
-④ 出场：everLit false→true → **三段瞬态**（reveal1/2/3 + 间隔 ms）；之后该鬼不再触发 ②③
-⑤ 关灯：放下/取消 → stopContinuous
-```
+**范围：** 仅握 `light` 扫描；放置灯不震；已发现鬼（everLit）不参与近距/过格。
 
-- 实现：`scan-haptics.ts` · 参数 `haptic-config.ts` · 调参 `hapticTuner`  
-- continuous：事件 base=1，`updateContinuous` 为绝对 0…1  
-- **禁止**默认「光斑每换格 impact」；过鬼格仅边沿轻点  
-- continuous ≤30s 续播；Web 弱脉冲
+| 事件 | 摘要 |
+|------|------|
+| 开灯 | 1× transient → 延迟 → continuous 底噪 |
+| 近鬼 | 未发现鬼曼哈顿线性 floor→peak |
+| 蓄光 | 压未发现鬼格 1s：peak→chargePeak 线性（与 dwell 同钟） |
+| 过格 | 换格进入未发现鬼格 → 轻 transient |
+| 出场 | everLit 上升沿 → mute 底噪 → 3× 瞬态 → 恢复底噪 |
+| 关灯 | stop continuous |
+
+实现：`feel/haptic-{config,math,patterns}.ts` · `scan-haptics.ts` · `hapticTuner`
 
 ---
 
@@ -338,3 +349,5 @@ function restart():
 |------|------|
 | v0.1 | R09–R15、R21–R24 冻结 |
 | v0.2 | R11 扫描光效/鬼层/入场待机；R12 标明未实现与换格勿默认震 |
+| v0.3 | R12 指向 HAPTICS_SPEC（已实现）；R15 重制 UI 说明 |
+| v0.4 | R12 补蓄光 continuous、出场 mute 底噪 |

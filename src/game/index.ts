@@ -11,12 +11,16 @@ import {
   type Board,
 } from './board';
 import { createScanHaptics } from './feel/scan-haptics';
-import { anyGhostCharging, stepGhosts } from './ghosts';
+import { allGhostsFound, anyGhostCharging, stepGhosts } from './ghosts';
 import { attachInput } from './input';
 import { loadLevel, returnToTray, takeFromTray, type LoadedLevel } from './level';
 import level001 from './levels/level_001.json';
 import { designToCell } from './layout';
-import { collectLightsFromGet, computeLit } from './optics';
+import {
+  castStraightLightPath,
+  collectLightsFromGet,
+  computeLit,
+} from './optics';
 import type {
   DirValue,
   DragGhost,
@@ -26,7 +30,7 @@ import type {
   PropType,
   TrayItem,
 } from './types';
-import { cellKey } from './types';
+import { cellKey, Dir } from './types';
 import { applyPropStyleCss } from './propStyle';
 import { applyViewStyleCss } from './viewStyle';
 import {
@@ -42,6 +46,7 @@ import {
   mountLightFx,
   type FreeGlow,
   type LightFxHandle,
+  type PlacedLightFx,
 } from './view/lightFx';
 import { mountHapticTuner } from './view/hapticTuner';
 import { mountPropTuner } from './view/propTuner';
@@ -193,21 +198,60 @@ function resolve(
   rt.ghosts = stepGhosts(rt.ghosts, lit, nowMs);
 }
 
+/** 盘上 light 发射列表；含直线最远亮格。拖起中的灯排除。 */
+function collectPlacedLightFx(
+  board: Board,
+  hidePropId?: string,
+): PlacedLightFx[] {
+  const list: PlacedLightFx[] = [];
+  const getOcc = (x: number, y: number) => get(board, x, y);
+  for (let y = 0; y < board.height; y++) {
+    for (let x = 0; x < board.width; x++) {
+      const occ = get(board, x, y);
+      if (occ?.kind !== 'prop' || occ.type !== 'light') continue;
+      if (hidePropId && occ.id === hidePropId) continue;
+      const path = castStraightLightPath(
+        board.width,
+        board.height,
+        getOcc,
+        x,
+        y,
+        occ.facing as Dir,
+      );
+      list.push({
+        x,
+        y,
+        facing: occ.facing as DirValue,
+        endX: path.end?.x ?? null,
+        endY: path.end?.y ?? null,
+        litCount: path.litCells.length,
+      });
+    }
+  }
+  return list;
+}
+
 function paint(
   els: DomBoardElements,
   rt: Runtime,
   lightFx: LightFxHandle,
 ): void {
+  const hidePropId =
+    rt.drag?.source === 'board' ? rt.drag.propId : undefined;
   renderBoard(els, {
     board: rt.board,
     ghosts: rt.ghosts,
     lit: rt.lit,
     tray: rt.tray,
     drag: rt.drag,
-    hidePropId: rt.drag?.source === 'board' ? rt.drag.propId : undefined,
+    hidePropId,
   });
-  // 光效独立层：仅拿起手电时画连接+光斑
-  lightFx.paint(rt.drag, rt.freeGlows);
+  // 光效层：放置发射 + 扫描 beam/glow/吸附框（Additive）
+  lightFx.paint({
+    drag: rt.drag,
+    freeGlows: rt.freeGlows,
+    placedLights: collectPlacedLightFx(rt.board, hidePropId),
+  });
   if (rt.def.title) els.titleEl.textContent = rt.def.title;
 }
 
@@ -324,13 +368,21 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     getLayout,
     getStage: () => stage,
     onTrayPick: (type: PropType) => takeFromTray(rt.tray, type),
+    // 未找全鬼：手电只能扫描，禁止落格（镜等其它道具不受限）
+    canCommitDrop: (drag) => {
+      if (drag.type === 'light' && !allGhostsFound(rt.ghosts)) return false;
+      return true;
+    },
     onDragMove: () => {
       resolve(rt, scanHaptics);
       repaint();
       afterResolve();
     },
     onDrop: (drag) => {
-      if (!drag.cell) {
+      // 双重门禁：吸附已挡；此处防竞态
+      const blocked =
+        drag.type === 'light' && !allGhostsFound(rt.ghosts);
+      if (!drag.cell || blocked) {
         if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
         rt.drag = null;
         scanHaptics.end();
