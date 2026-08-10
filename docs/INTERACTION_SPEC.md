@@ -2,9 +2,10 @@
 
 | | |
 |--|--|
-| 版本 | **v0.4** |
-| 状态 | 冻结基线 + Step1 表现扩展（扫描光效 / 鬼层） |
+| 版本 | **v0.5** |
+| 状态 | 冻结基线 + 拖灯 A1 + 托盘解锁/横滑 + 镜放置表现 |
 | 依赖 | `PRODUCT.md`、`OPTICS_SPEC.md`、`adapt/design.ts` |
+| 进度索引 | `PROGRESS.md`（已落地以进度文为准） |
 
 ---
 
@@ -92,18 +93,45 @@ function cellToDesignCenter(x: number, y: number): { dx: number; dy: number } {
 ```
 #ui-root
   #board-hit    position absolute，覆盖棋盘设计矩形，pointer-events auto
-  #tray         底部托盘
+  #tray         底部托盘视口（overflow hidden）
+    .tray-track 内容轨（flex + translateX 横滑）
   #hud          重开等
   #camera-modal 全屏层，锁盘时显示
 ```
 
 Canvas 可 `pointer-events: none`，输入只走 `#board-hit` + tray，避免和 WebGPU 争事件。
 
+### 托盘内容与解锁
+
+| 阶段 | 托盘内容 |
+|------|----------|
+| 开局 | 仅 `def.tray` 中的 **light**（`initialTray`） |
+| 全鬼 `everLit` 一次 | 按 `TRAY_UNLOCK_ON_ALL_FOUND` 从 def 补入 mirror 等 + **滑入动画** |
+
+### 托盘几何（对齐 BB2 思路 · DOM）
+
+- 图标尺寸 = `traySlotScale`（% 格），**不**为塞进一屏缩小。  
+- 内容窄：track pad 居中；内容宽：可横滑 `scrollX ∈ [0, contentW - viewW]`。  
+- 真源：`trayMetrics.ts` · 容器框 `TRAY_LAYOUT`。
+
+### 托盘指针（横滑 vs 拖出）
+
+```
+pointerdown on #tray
+  → 武装 pending（点在 item 则记 type；空白也可横滑）
+  → 明显横移且可滑 → SCROLL（排除 picking 标记，不 take）
+  → 位移过 DRAG_THRESHOLD 且非纯横 → takeFromTray + DRAG
+  → 轻点几乎未移 → 不 take
+```
+
+- 拿起时剩余槽 **FLIP 补位**（`data-tray-picking` 排除被拿起那颗）。  
+- 解锁入场：`.tray-item-enter` 打在 `.prop-sprite`；入场期间 tray `.is-tray-entering` 临时 `overflow:visible`。
+
 ### 拖放状态机
 
 ```
 Idle
-  → pointerdown on tray item → DragFromTray { type, facing: default }
+  → pointerdown on tray item（过阈值）→ DragFromTray { type, facing: default }
   → pointerdown on board prop → DragBoard { id }  (锁盘时禁用)
 Drag*
   → pointermove → 更新 design 位；尝试 designToCell + canPlace + canCommitDrop
@@ -115,15 +143,16 @@ Idle
 
 ### 手电落格门禁（设计）
 
-- **未全部找到**（存在 `!everLit` 的鬼）时：`light` **禁止** `canCommitDrop` → 不吸附、松手回托盘；扫描光/震动照旧。
-- **全部 everLit 后**：才允许把手电放到空格；落格精灵锚在**格心**，尺寸与抬起 `computeDragSizePx` 一致。
+- **未全部找到**（存在 `!everLit` 的鬼）时：`light` **禁止** `canCommitDrop` → 不吸附、松手回托盘；扫描光/震动照旧。  
+- **全部 everLit 后**：才允许把手电放到空格；落格精灵锚在**格心**。  
+- 镜等：解锁进托盘后可落格（不受「先找鬼」限制）。
 
 ### 点击 vs 拖动阈值
 
 ```ts
 const DRAG_THRESHOLD_PX = 8  // 设计坐标
 // 若 total movement < threshold 且 target 为盘上道具 → 视为 click 旋转
-// 从托盘始终为 drag 意图；短移动松手在盘外 = 取消
+// 托盘：需过阈值才 take；短点不拿起
 ```
 
 ### 默认朝向
@@ -148,6 +177,7 @@ const DRAG_THRESHOLD_PX = 8  // 设计坐标
 enum SessionPhase {
   Playing = 'playing',
   Camera = 'camera',
+  Capturing = 'capturing', // 快门后：截屏→闪白→吐纸
   Won = 'won',
 }
 ```
@@ -161,14 +191,19 @@ Playing
       if !isDragging: phase = Camera
 
 Camera
-  盘面输入锁定
-  [拍照] → 全员 Caught；phase = Won
+  盘面输入锁定；隐藏「重制」
+  取景 UI：camera-frame + 快门（底中）+ 返回（快门左）
+  [拍照] → phase = Capturing
   [返回] → phase = Playing；不重置 everLit
   // 若返回后仍 allRevealed：下一帧 resolve 再进 Camera（正确）
 
+Capturing
+  先截棋盘区 → 闪白 → 拍立得吐出 → 全员 Caught；phase = Won
+  截失败：回 Camera（不写 Caught）
+
 Won
-  显示过关；输入锁定（除「下一关/重开」）
-  [重开] → 全量 reset → Playing
+  黑底 + 拍立得 +「再玩一次」
+  [再玩一次] → 全量 reset → Playing
 ```
 
 ### R21 拖动中全员显示
@@ -245,33 +280,44 @@ function restart():
 
 ---
 
-## R11 · 光路表现（Slice 0 / Step 1）
+## R11 · 光路表现（Slice 0 · A1）
 
 | 方案 | 选用 |
 |------|------|
-| A. 仅亮格色块 | 逻辑 lit 可有；当前格高亮可透明（不挡背景） |
-| B. 扫描光效贴图 | **Step 1 采用（拿起手电时）** |
+| A. 仅亮格色块 | 逻辑 lit 可有；当前格高亮可透明 |
+| B. 光效贴图 | **采用**（拖灯跟手 + 放置折线） |
 | C. 全屏后处理光 | 不做 |
 
-### R11.1 扫描态（拖着 light）
+### R11.1 拖灯 · A1 跟手照射（统一）
 
-- **逻辑 lit：** 光斑中心（design 连续点）→ `designToCell` → 至多 1 格；可与已放置灯的 `computeLit` 并集。  
-- **表现：** 独立 canvas（全 design 390×844，z 高于拖影）：  
-  - `light-beam.png` 连接（宽度随 openT 中心变宽）  
-  - `light-glow.png` 光斑（openT 整体 scale）  
-  - `mix-blend-mode: plus-lighter`（Additive）  
-- **位置关系**只读 `VIEW_STYLE`（glowForward/Side/Offset、beam*）。  
-- 放下清空 canvas；手电本体不随 openT 缩放。
+**目标：** 全程像拿手电照，**不**在「可吸附」时切换另一套锚格预览光。
 
-### R11.2 放置态
+| 层 | 规则 |
+|----|------|
+| **光斑中心** | 永远相对手电 `designX/Y` 连续跟手（沿 facing）；**不吸格心** |
+| **连接** | 灯头锚点 → 前方；长度 = 灯心→光斑距离 |
+| **长度算法** | `freeShineLengthPx`：沿 facing 格走，遇墙停、道具停在该格、否则到盘边；再与盘缘投影取 min |
+| **短距 / 长距** | **未全 everLit**：再 cap `glowForward×格`；**全 everLit 后**：可用满环境长度（仍跟手） |
+| **可放** | 仅多画 `snap-frame`（吸附格）；**不**改 beam/glow 算法 |
+| **落盘** | 才切 R11.2 格心放置光 |
 
-- 完整 `computeLit` 直线布光；多 light 并集。  
-- **发射表现：** 盘上每盏 light 在 `board-light-canvas`：  
-  - `castReflectingLightPath`：空/鬼继续，墙挡，**镜 90° 折**（与 computeLit 同表），其它道具挡  
-  - 折线 segments 画 beam；**光斑在最后一段尽头亮格**  
-  - 拖起中的灯不画放置发射；无通路不画  
-- **镜：** 托盘/拿起 `prop-mirror-tray.png`；盘上 `prop-mirror-board.png` + facing 点旋  
-- 格 lit 标记可选（当前透明）。
+**逻辑 lit（可与表现分离）：**
+
+- 无合法吸附：光斑 `designToCell` 至多 1 格 + 已放灯并集。  
+- 有吸附且已找全：按**吸附格** + facing 做完整 `computeLit`（可经镜），供预览亮哪些格。  
+
+**表现载体：** `board-light-canvas` 全 design；`plus-lighter`；参数 `VIEW_STYLE`。
+
+### R11.2 放置态（已落盘 light）
+
+- 完整 `computeLit`；多 light 并集；光源格本身不亮。  
+- **发射表现：** 每盏盘上 light：  
+  - `castReflectingLightPath`（空/鬼继续，墙挡，镜折，其它挡）  
+  - 折线 segments 画 beam；**光斑在最后一段尽头亮格中心**  
+  - 绘制 **clip 在棋盘外框内**（大光斑/加长 beam 不画出盘外）  
+  - 正被拖起的灯不画放置发射  
+- **镜贴图：** 托盘/拿起 `prop-mirror-tray.png`；盘上/投影 `prop-mirror-board.png` + facing×90（资源自带斜面，不另拧反射角）  
+- 镜光学表见 OPTICS R02 / 代码 `MIRROR_REFLECT`（标定：3↔4 正面）。
 
 ### R11.3 鬼表现
 
@@ -337,8 +383,9 @@ function restart():
 | 相位 | UI |
 |------|-----|
 | Playing | 托盘 + 重开 |
-| Camera | 遮罩 +「拍照」+「返回」 |
-| Won | 「抓到了！」+ 重开 |
+| Camera | 取景框 + 快门 + 返回（无重制） |
+| Capturing | 闪白 + 吐拍立得 |
+| Won | 黑底 + 合影 +「再玩一次」 |
 
 无失败相位；仅未过关。
 
@@ -351,4 +398,6 @@ function restart():
 | v0.1 | R09–R15、R21–R24 冻结 |
 | v0.2 | R11 扫描光效/鬼层/入场待机；R12 标明未实现与换格勿默认震 |
 | v0.3 | R12 指向 HAPTICS_SPEC（已实现）；R15 重制 UI 说明 |
+| v0.4 | R13 增 Capturing；取景 UI / 截屏吐纸 / Camera 无重制 / Won 再玩一次 |
 | v0.4 | R12 补蓄光 continuous、出场 mute 底噪 |
+| **v0.5** | R10 托盘解锁/横滑/FLIP；R11 **A1 跟手统一** + 放置 clip + 镜双图 |

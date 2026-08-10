@@ -56,6 +56,8 @@ export type InputCallbacks = {
    * 返回 false 时不吸附、不落格（松手走 cancel）。
    */
   canCommitDrop?: (drag: DragGhost, x: number, y: number) => boolean;
+  /** Camera / Capturing / Won：禁止盘面与托盘操作 */
+  isInputLocked?: () => boolean;
 };
 
 function clientToDesignLocal(
@@ -400,14 +402,16 @@ export function attachInput(
 
   const onPointerDown = (e: PointerEvent) => {
     if (pointerId !== null) return;
-    // 调参面板不进拖拽
+    // 调参 / 相机控件不进拖拽
     const t = e.target instanceof Element ? e.target : null;
     if (
       t?.closest?.(
-        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #btn-restart, .game-restart-btn, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab',
+        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #island-tuner, #island-tuner-fab, #btn-restart, .game-restart-btn, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab, .island-tuner, .island-tuner-fab, .camera-session, .camera-btn, .won-replay-btn',
       )
     )
       return;
+    // Camera / Capturing / Won：锁盘
+    if (cb.isInputLocked?.()) return;
 
     const layout = cb.getLayout();
     if (!layout) return;

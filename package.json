@@ -16,6 +16,8 @@
   "dependencies": {
     "@capacitor/core": "^8.1.0",
     "@capacitor/ios": "^8.1.0",
+    "@zumer/snapdom": "^2.23.2",
+    "modern-screenshot": "^4.7.0",
     "three": "^0.178.0"
   },
   "devDependencies": {

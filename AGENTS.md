@@ -49,11 +49,14 @@
 ```
 #shell > #viewport > #app > #stage
   canvas                 ← WebGPU
-  #ui-root               ← 所有游戏 UI（safe padding）
+  #ui-root               ← 所有游戏 UI（safe padding；game-ui 时 padding 0）
     #board-hit
       .board-grid        ← 格/墙/道具
       .board-ghost-layer ← 鬼（稳定层，勿并进 cell 每帧重建）
-    .board-light-canvas  ← 扫描光效
+    #tray                ← 托盘视口（裁剪）
+      .tray-track        ← 槽位轨 + 横滑 translateX
+    #drag-layer
+    .board-light-canvas  ← 拖灯/放置光效（Additive）
 #device-switcher         ← 仅桌面预览例外
 ```
 
@@ -85,12 +88,15 @@ npm run ios
 ## 业务怎么加
 
 - 规则：先读/改 **`docs/PRODUCT.md`**（及 OPTICS/INTERACTION/HAPTICS），再写代码  
-- 进度/模块：先扫 **`docs/PROGRESS.md`**  
+- 进度/模块：先扫 **`docs/PROGRESS.md`**（v0.7+）  
+- 文档读写顺序：见 **`docs/README.md`**  
 - 玩法：改 `src/game/*`（入口 `mountGame`）  
+- 拖灯光效：A1 跟手统一 · `lightFx.freeShineLengthPx` · 落盘才格心折线  
+- 托盘：`trayMetrics` + `#tray` / `.tray-track`；解锁见 `level.unlockTrayTypes`  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
 - 扫描震动：设计 **`docs/HAPTICS_SPEC.md`**；实现 `feel/haptic-*` + `scan-haptics`；原生须 `BridgeViewController`  
-- 鬼动画：层 `board-ghost-layer` + CSS 入场 + `ghostIdle` 待机  
+- 鬼动画：层 `board-ghost-layer` + CSS 入场 + `ghostIdle` 待机 
 
 ## 刻意不做（工程）
 

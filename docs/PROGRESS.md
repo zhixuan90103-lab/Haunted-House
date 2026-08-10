@@ -2,107 +2,96 @@
 
 | | |
 |--|--|
-| 版本 | **v0.6** |
+| 版本 | **v0.8** |
 | 日期 | 2026-08-07 |
-| 范围 | Slice 0 · Step 1 + 扫描震动（含蓄光/出场 mute）+ 重制 + 手感微调 |
-| 真源优先级 | PRODUCT → OPTICS → INTERACTION → **HAPTICS_SPEC** → 本文仅作进度索引 |
+| 范围 | Slice 0 · … · **Camera / 截屏 / 吐相 / 结算** |
+| 真源优先级 | **PRODUCT** → **OPTICS** → **INTERACTION** → **HAPTICS** → 本文（仅进度索引，不改规则） |
 
-> **用法：** 新会话先扫本文「已落地」与「未做」；改规则仍改 PRODUCT/OPTICS/INTERACTION/HAPTICS，再改码。
+> **用法：** 新会话先扫本文「当前可玩」与「本轮已落地」；改规则改 SPEC，再改码。
 
 ---
 
 ## 1. 当前可玩状态
 
-**能做的：**
+1. **5×5** 木格 + 全屏 `board-bg` 竖屏舞台（390×844）
+2. **托盘**  
+   - 开局仅 **手电**；**全鬼 everLit 后** 镜等滑入（`TRAY_UNLOCK_ON_ALL_FOUND`）  
+   - 图标固定 `traySlotScale`，**不**为塞屏缩小；溢出可**横滑**  
+   - 拿起补位 **FLIP**；解锁入场 **自下而上滑入**（入场时临时 `overflow:visible`）  
+   - 横滑 vs 拖出：轴锁分流（见 `input` + `trayMetrics`）
+3. **拖灯 · 视觉 A1（统一跟手照射）**  
+   - 全程 beam + glow **跟手**（`designX/Y`），长度 = 朝向障碍/盘边（`freeShineLengthPx`）  
+   - **未找全鬼**：短距 cap（`glowForward`）；**找全后**：可照远，吸附**不换另一套光**  
+   - **可放**：仅多 snap 框；**落盘**后才切格心放置光 + 折线
+4. **落格门禁**：未找全鬼禁止 `light` 落格；找全后可放；镜等可随时放（解锁后）
+5. **放置态光**：`castReflectingLightPath` 折线 + 尽头光斑；盘上 clip 在棋盘框内
+6. **镜**：托盘/拿起立式图 · 盘上斜置图；`MIRROR_REFLECT` 单面 3↔4 正面；点旋四向
+7. **鬼**：Hidden / Revealed / Transparent；首次 dwell 1s；独立层入场 + 待机；Revealed Additive
+8. **扫描震动**（仅握灯）：见 `HAPTICS_SPEC` / §2.4
+9. **重制**：鬼隐藏、道具回盘、停震动、托盘 scroll 归零
+10. **调参**：右下 ⚙ prop/布局/光效；左下 📳 震动
 
-1. 5×5 木格棋盘 + 全屏 `board-bg` 竖屏舞台（390×844）
-2. 托盘 **3 盏** 手电：拖出 / **全发现后**放置 / 再拿起 / 点旋四向
-3. **扫描态**（拿起 light）：前方连续光斑跟手；中心格 lit（1 格）；**未找全鬼不可落格**
-4. **放置态**：完整直线 `computeLit`（多灯并集）；光源格本身不亮；精灵**格心** + 与抬起同尺寸
-5. 鬼状态机 + **首次出场需连续照亮 1s**（离开清零）
-6. 鬼：Hidden → 首次 Revealed 入场 + 待机；Transparent；再照立刻 Revealed
-7. **扫描震动会话**（仅握灯）：开灯 → 底噪 continuous → 近鬼线性 → 压格蓄光 1s 爬升 → 过未发现鬼格轻点 → 出场三连（底噪关）→ 三连后底噪开 / 放下停
-8. **重制**按钮：鬼全隐藏、道具回托盘、停震动
-9. 调参：右下 ⚙ 布局手感光效；左下 📳 震动
-
-**明确未做：** 半透/漫射 UI、会话 Camera/Won、拍照、多关、音效、Android。  
-**本轮：** 镜贴图（盘上/托盘）+ 托盘拖放点旋 + 折线光经镜。
+**明确未做：** 半透/漫射正式 UI、多关、音效、Android、拖灯长度软过渡、shake 显影、系统灵动岛。
 
 ---
 
-## 2. 已落地修改清单（按主题）
+## 2. 本轮（v0.7）已落地 · 按主题
 
-### 2.1 光路与扫描
-
-| 项 | 说明 | 代码 |
-|----|------|------|
-| 放置直线 lit | `computeLit` + `collectLightsFromGet` | `optics.ts` |
-| 扫描 1 格 | 拖 light 不用幽灵灯占格；`freeBeamSpot` → 中心格 lit | `index.ts` · `lightFx.ts` |
-
-### 2.2 鬼状态
+### 2.1 拖灯光效 A1（跟手统一）
 
 | 项 | 说明 | 代码 |
 |----|------|------|
-| everLit 三态 | Hidden / Revealed / Transparent | `ghosts.ts` |
-| 首次 dwell 1s | 连续 isLit ≥ 1000ms | `GHOST_REVEAL_DWELL_MS` |
-| 拖灯 / 放置 dwell 时钟 | 拖灯用 input rAF；放置用 dwell rAF；禁止双 rAF | `index.ts` |
+| 一套跟手光 | 扫描/可放**同一套** beam+glow；可放只加 snap | `lightFx.ts` · `index.resolve` |
+| 长度 | `freeShineLengthPx`：沿 facing 走到墙/道具/盘边；未找全再 cap `glowForward` | `lightFx.ts` |
+| 连接长度 | = 灯心→光斑投影距离 | `paint` |
+| 逻辑 lit | 未吸附：光斑格；已吸附且找全：落点格完整 `computeLit`（可经镜） | `index.ts` |
+| 放置发射 | 格心锚 + 折线；`withBoardClip` 不画出棋盘外框 | `paintPlacedLight` |
 
-### 2.3 光效 / 鬼表现
+**沟通结论（A1）：** 不像「吸附瞬间换成长预览光」；像一直拿手电照，能放时只多落点框。
 
-| 项 | 说明 | 代码 |
-|----|------|------|
-| 扫描光效层 | beam + glow，仅拿起 | `lightFx.ts` |
-| 独立鬼层 + 入场/待机 | DOM 池 + CSS + ghostIdle | `domBoard` · `ghostIdle` |
-
-### 2.4 扫描震动（S3.1 · 本轮重点）
-
-设计真源：**`docs/HAPTICS_SPEC.md`**
+### 2.2 镜与折线光
 
 | 项 | 说明 | 代码 |
 |----|------|------|
-| 会话边界 | 仅 `drag.type==='light'`；放置灯不震 | `scan-haptics.ts` |
-| 开灯 | 1× transient；`openToContinuousMs` 后 continuous | `haptic-patterns` |
-| 底噪 continuous | base=1 + `updateContinuous` 绝对电平 | `haptic-patterns` · native |
-| 近鬼 | 未发现鬼曼哈顿；`nearRadius` 内 **线性** floor→peak | `haptic-math` |
-| **蓄光 1s** | 压未发现鬼格 + `litSince`：peak **线性**→ chargePeak（与 dwell 同钟） | `scanContinuousLevel` |
-| 过鬼格 | 换格进入 **!everLit** 鬼格 → 轻瞬态 + 冷却 | `scan-haptics` |
-| 出场 | everLit 上升沿 → **三段**瞬态；**期间 mute continuous**，#3 后重开底噪 | `playRevealPattern` · `revealGate` |
-| 已发现鬼 | 不参与近距/过格/蓄光 | `undiscoveredGhosts` |
-| 参数 | 定稿默认在 config | `haptic-config.ts` |
-| 调参 UI | 左下 📳 试振 + 滑条 + 复制 | `hapticTuner.ts` |
-| 原生桥 | `AdvancedHaptics`；`updateContinuous` / `diagnose` / `buzz` | `utils/haptics` · Swift |
-| 注册硬坑 | **SceneDelegate 必须 `BridgeViewController()`** | `ios/.../SceneDelegate.swift` |
+| 双贴图 | tray/拿起 `prop-mirror-tray`；盘/投影 `prop-mirror-board` | `domBoard` · `ASSETS` |
+| 反射表 | 标定 3↔4 正面、1/2 背面挡；facing×90 与贴图同旋 | `optics.MIRROR_REFLECT` |
+| 放置路径 | `castReflectingLightPath` segments + end 光斑 | `optics` · `lightFx` |
+| 四层尺寸 | 托盘容器 / 托盘图标 / 拿起 / 盘上+投影 解耦 | `propStyle` · `layout.TRAY_*` |
 
-**定稿默认参数（摘要 · 与 `haptic-config.ts` 一致）：**
-
-| 组 | 值 |
-|----|-----|
-| 开灯 | i=0.6 s=0.8 · 65ms → continuous |
-| 底噪 / 近鬼 peak | 0.15/0.01 · 0.2/0.1 · 半径 3 格 |
-| **蓄光满 chargePeak** | **0.35 / 0.15** |
-| 过鬼格 | 0.51/0.18 · 冷却 180ms |
-| 出场三连 | 0.53/0.46 →40ms→ 0.4/0.29 →40ms→ 0.33/0.62 |
-
-### 2.5 重制
+### 2.3 托盘
 
 | 项 | 说明 | 代码 |
 |----|------|------|
-| HUD「重制」 | `loadLevel` 重载；鬼 Hidden；托盘恢复；`scanHaptics.end` | `domBoard` · `index.restart` |
-| 对齐 | INTERACTION R15 语义 | 本关快照 = 当前 `level_001` |
+| 开局 / 解锁 | 仅 light → 全 everLit 后补镜等 + 滑入 | `level` · `index.maybeUnlockTray` |
+| 固定图标 + 横滑 | BB2 思路：preferred 尺寸不缩；track `translateX` | `trayMetrics` · `domBoard` · `input` |
+| 补位 FLIP | 拿起后剩余槽从旧屏位滑到新位（排除 `data-tray-picking`） | `domBoard.playTrayFlip` |
+| 入场动画 | `.tray-item-enter` 打在 `.prop-sprite`；`.is-tray-entering` 放开 overflow | `style.css` |
 
-### 2.6 手感2
+### 2.4 扫描震动（沿用 v0.6）
+
+真源：`docs/HAPTICS_SPEC.md` · 模块：`feel/haptic-*` · `scan-haptics` · 原生 `plugins/native-haptics`  
+定稿参数见 `haptic-config.ts`（开灯 / 底噪 / 近鬼 / 蓄光 / 过格 / 出场三连 mute）。
+
+### 2.5 拍照会话（v0.8）
 
 | 项 | 说明 | 代码 |
 |----|------|------|
-| 抬升 Y | 默认 **`DRAG_OFFSET_Y = -1`**（MIN/MAX 同步） | `feel/defaults.ts` |
+| 相位 | Playing → Camera → Capturing → Won | `SessionPhase` · `index.ts` |
+| 进 Camera | `allRevealed` 且无 drag（R21） | `maybeEnterCamera` |
+| UI | `camera-frame.png` + 绘制快门/返回 | `cameraSession.ts` |
+| 截屏 | SnapDOM clip 棋盘±pad；光 bake screen；失败回 Camera | `captureBoard.ts` |
+| 仪式 | 先截 → 闪白 → 假岛吐拍立得 → 黑底结算 | `cameraSession` + CSS |
+| 返回 | 回 Playing；仍全显再进 | `onReturnFromCamera` |
+| 再玩一次 | `restart()` | Won 按钮 |
+| Camera 无重制 | HUD 重制隐藏 | `setPlayLock` |
 
-### 2.7 工程
+### 2.6 其它保留
 
 | 项 | 说明 |
 |----|------|
-| 震动模块分层 | `haptic-config` / `math` / `patterns` / `scan-haptics` |
-| 插件 | `plugins/native-haptics` → bootstrap / Xcode 重装 |
-| 调参 | propTuner ⚙ + hapticTuner 📳 |
+| 重制 | HUD · `loadLevel` · 清 tray scroll（仅 Playing） |
+| 手感2 | `DRAG_OFFSET_Y = -1` |
+| 鬼 Additive | `.ghost-lit-add` plus-lighter（Revealed） |
 
 ---
 
@@ -110,52 +99,58 @@
 
 ```
 src/game/
-  index.ts           # mountGame · resolve · dwell · paint · restart
-  types.ts · optics.ts · ghosts.ts · board.ts · level.ts
-  levels/level_001.json
-  layout.ts · input.ts
-  propStyle.ts · viewStyle.ts
+  index.ts              # mountGame · resolve（A1 跟手 + lit）· dwell · restart
+  types.ts · board.ts · ghosts.ts · optics.ts · level.ts
+  levels/level_001.json # 1 灯 + 3 镜 · 中心墙 · 四鬼
+  layout.ts             # BOARD_LAYOUT · TRAY_LAYOUT
+  trayMetrics.ts        # 槽尺寸 · scroll · 横滑阈值
+  propStyle.ts          # 四层道具尺度 SSOT
+  viewStyle.ts          # 光斑/beam/鬼/snap 表现
+  input.ts              # 托盘横滑/拖出 · 盘上拖/旋
   feel/
     defaults.ts · drag-session.ts
-    haptic-config.ts    # 参数真源
-    haptic-math.ts      # 距离/线性
-    haptic-patterns.ts  # 播放模式
-    scan-haptics.ts     # 会话状态机
+    haptic-config.ts · haptic-math.ts · haptic-patterns.ts
+    scan-haptics.ts
   view/
-    domBoard.ts         # 壳 · 鬼层 · 托盘 · 重制按钮
-    lightFx.ts · ghostIdle.ts
-    propTuner.ts · hapticTuner.ts
+    domBoard.ts         # 壳 · 鬼层 · 托盘 track · FLIP · 重制
+    lightFx.ts          # freeShine · 放置折线 · snap
+    cameraSession.ts    # 取景 · 快门/返回 · 闪白 · 吐纸 · Won
+    captureBoard.ts     # SnapDOM clip 合影
+    ghostIdle.ts · propTuner.ts · hapticTuner.ts
 ```
 
-### DOM（玩法相关）
+### DOM（玩法）
 
 ```
 #ui-root.game-ui
   .stage-bg
-  #hud
-    .game-title · .game-hint · #btn-restart.game-restart-btn
+  #hud · #btn-restart
   #board-hit
     .board-grid
     .board-ghost-layer
-  #tray
+  #tray.game-tray-bare          ← 视口 overflow hidden
+    .tray-track                 ← flex 槽 + translateX 滚动
+      .tray-item[.tray-item-enter]
   #drag-layer
   .board-light-canvas
-  #haptic-tuner-fab / #haptic-tuner
-  #prop-tuner-fab / #prop-tuner
+  #prop-tuner* · #haptic-tuner*
 ```
 
 ---
 
-## 4. 与规格的对应
+## 4. 规格对应
 
-| 主题 | 规格 | 实现 |
+| 主题 | 规格 | 状态 |
 |------|------|------|
 | 鬼 + dwell | OPTICS R07 | 已落地 |
-| 扫描光 | INTERACTION R11 | 已落地 |
-| 震动 | **HAPTICS_SPEC** · R12 | 蓄光/出场 mute/定稿参数已同步 |
-| 手感2 抬升 | feel/defaults | DRAG_OFFSET_Y=-1 |
-| 重开 | INTERACTION R15 | UI + `restart()` |
-| 工程震动注册 | ENGINEERING §7 | SceneDelegate 已修 |
+| 镜反射 | OPTICS R02 · 代码标定表 | 已落地 |
+| 拖灯 A1 / 放置光 / snap | **INTERACTION R11** | v0.5 文档已对齐 |
+| 托盘解锁 / 横滑 / FLIP | **INTERACTION R10** | v0.5 文档已对齐 |
+| 落格门禁 | INTERACTION R10 手电门禁 | 已落地 |
+| 震动 | HAPTICS_SPEC | 已落地 |
+| 重开 | INTERACTION R15 | 已落地 |
+| 拍照会话 | INTERACTION R13 · Capturing | **v0.8 已落地** |
+| 资源 | ASSETS.md | 镜双图 + camera-frame |
 
 ---
 
@@ -163,26 +158,35 @@ src/game/
 
 | 优先级 | 项 |
 |--------|-----|
-| Step 2 | 镜 UI + 关卡；手测 S2 |
-| Slice 0 收尾 | Camera/Won、拍照（重制 UI 已有） |
-| S3 | 音效、安全区打磨 |
-| — | 震动：真机再微调可只改 `haptic-config` |
+| 手感 | 找全瞬间短→长 / 落盘跳变 · 可选软过渡 |
+| 合影 | 截屏真机调参 · 吐纸手感 · 可选慢显影 |
+| 关卡 | 多关 JSON · 关卡选择 |
+| 道具 | 半透 / 漫射正式美术与逻辑 UI |
+| 音频 | SFX |
+| 平台 | Android |
 
 ---
 
-## 6. 文档维护约定
+## 6. 文档维护约定（规范）
 
 | 变更类型 | 更新哪些 |
 |----------|----------|
-| 玩法/胜负/鬼规则 | `PRODUCT.md` → OPTICS / INTERACTION → 码 |
-| 光路算法 | `OPTICS_SPEC` → `optics` / `ghosts` |
-| 拖放/会话/扫描表现 | `INTERACTION_SPEC` → `input` / `view/*` |
-| **扫描震动** | **`HAPTICS_SPEC.md`** → `feel/haptic-*` / `haptic-config` |
-| 手感2 默认 | `feel/defaults.ts`（抬升等） |
+| 玩法 / 胜负 / 鬼 | `PRODUCT.md` → OPTICS / INTERACTION → 码 |
+| 光路 / 反射表 | `OPTICS_SPEC.md` → `optics.ts` |
+| 拖放 / 托盘 / 扫描表现 / A1 | `INTERACTION_SPEC.md` → `input` / `lightFx` / `domBoard` |
+| 扫描震动 | `HAPTICS_SPEC.md` → `feel/haptic-*` |
 | 资源路径 | `ASSETS.md` + `public/` |
-| 切片完成度 | `IMPLEMENTATION_TODO.md` + 本文 §2 |
-| 工程决策 | `ENGINEERING.md` |
-| 启动链 | `ENTRYPOINTS.md` |
+| **做完了什么** | **本文 PROGRESS** + 必要时 `IMPLEMENTATION_TODO` |
+| 工程坑 | `ENGINEERING.md` |
+| 启动 / DOM 硬约定 | `AGENTS.md` · `ENTRYPOINTS.md` |
+| 索引与读写规则 | `docs/README.md` |
+
+**原则：**
+
+1. **规则真源**在 PRODUCT / SPEC；PROGRESS **不发明规则**，只记落地与模块。  
+2. 改行为：先改对应 SPEC 一句，再改码，再改 PROGRESS 一行。  
+3. 大版本：PROGRESS 升 `v0.x` + 修订表；SPEC 各自升补丁版本。  
+4. 过时交接文（如 HANDOFF_STEP1）不删，但以 PROGRESS 为准。
 
 ---
 
@@ -191,5 +195,7 @@ src/game/
 | 版本 | 说明 |
 |------|------|
 | v0.4 | Step1 光效/鬼动画/dwell/鬼层 |
-| v0.5 | S3.1 震动全链路 + HAPTICS_SPEC + 模块拆分 + 重制 UI + 原生注册修复 |
-| v0.6 | 蓄光 continuous 爬升；出场三连 mute 底噪；定稿参数；手感2 抬升 Y=-1 |
+| v0.5 | S3.1 震动全链路 + 重制 + 原生注册 |
+| v0.6 | 蓄光 continuous；出场 mute；手感2 Y=-1 |
+| **v0.7** | 镜+折线；托盘解锁/横滑/FLIP/入场；拖灯 **A1 跟手统一**；文档规范 |
+| **v0.8** | **Camera 会话**：取景 UI、截屏、闪白、吐拍立得、结算再玩；R13 Capturing |

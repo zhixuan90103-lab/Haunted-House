@@ -3,7 +3,7 @@
  *
  * 设计（A1）：
  * - **拖灯全程同一套跟手照射**：beam/glow 锚 designX/Y，长度 = 朝向障碍/盘边
- * - 未找全鬼：短距 cap（glowForward）；找全后：可照到墙/盘边（不因吸附硬切另一套）
+ * - 未找全鬼：短距固定 glowForward×格；找全后：≤ glowForwardLong×格（近墙再截）
  * - 可放：仅多 snap 框；落盘后才切「格心放置光」
  * - 全 design canvas；mix-blend-mode: plus-lighter → 对背景 Additive
  */
@@ -169,9 +169,10 @@ export function freeBeamSpotWithLengthPx(
 }
 
 /**
- * A1 跟手照射长度（px）：从灯心沿 facing 走到墙/道具/盘边。
- * - longRange=false：再 cap 到 glowForward×格（扫描找鬼）
- * - longRange=true：可照满空列，随手连续变，不因吸附格换算法
+ * A1 跟手照射长度（px）：从灯心沿 facing。
+ * - longRange=false（扫鬼）：**固定** glowForward×格，不因墙/道具/位置变短变长
+ * - longRange=true（找全后）：可随障碍略变长，但 **≤ glowForwardLong×格**，
+ *   避免光斑贴到远墙导致横移不像跟手
  */
 export function freeShineLengthPx(opts: {
   lightX: number;
@@ -185,6 +186,11 @@ export function freeShineLengthPx(opts: {
   const { lightX, lightY, facing, width, height, get, longRange } = opts;
   const cs = cellSize();
   const shortCap = cs * Math.max(0.25, VIEW_STYLE.glowForward);
+  const longCap = cs * Math.max(VIEW_STYLE.glowForward, VIEW_STYLE.glowForwardLong);
+
+  // 扫鬼阶段：视觉长度恒定，不读障碍
+  if (!longRange) return shortCap;
+
   const f = ((facing % 4) + 4) % 4;
   const fwd = DELTA[f as Dir] ?? DELTA[Dir.N];
 
@@ -197,7 +203,7 @@ export function freeShineLengthPx(opts: {
   edgeMax = Math.max(0, edgeMax);
 
   const start = designToCell(lightX, lightY);
-  let envLen = Math.min(shortCap, edgeMax);
+  let envLen = edgeMax;
 
   if (start) {
     let x = start.x;
@@ -223,13 +229,11 @@ export function freeShineLengthPx(opts: {
       const proj =
         (end.dx - lightX) * fwd.dx + (end.dy - lightY) * fwd.dy;
       envLen = Math.max(0, Math.min(proj, edgeMax));
-    } else {
-      envLen = Math.min(shortCap, edgeMax);
     }
   }
 
-  if (!longRange) return Math.min(envLen, shortCap);
-  return envLen;
+  // 找全后仍跟手：长度 ≤ longCap；近墙时再被 env 截短
+  return Math.min(envLen, longCap);
 }
 
 /**

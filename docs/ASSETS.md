@@ -2,10 +2,11 @@
 
 | | |
 |--|--|
-| 版本 | **v0.3** |
+| 版本 | **v0.4** |
 | 原则 | **一物一图**；朝向用代码旋转，不拆四向贴图 |
-| 实现根路径 | Vite：`public/` → 运行时 `/文件名` 或 `./文件名`（`base: './'`） |
+| 实现根路径 | Vite：`public/` → 运行时 `./文件名`（`base: './'`） |
 | 备份 | `assets/` 与 `public/` 同步关键定稿 |
+| 进度 | 定稿以本文为准；落地清单见 `PROGRESS.md` |
 
 ---
 
@@ -33,11 +34,12 @@
 | 棋盘背景 | **`board-bg.jpg`** | **定稿** | 空 5×5 木格，无 UI、无鬼、无道具 |
 | 鬼魂·完全显示 | **`ghost.png`** | **定稿** | Q 版透明底；入场/待机/透明共用；尺寸=格边×`ghostSize%` |
 | 光源 light | **`prop-light.png`** | **定稿** | 黄身手电；**一物一图**；朝向代码旋转 |
-| 镜子·盘上 | **`prop-mirror-board.png`** | **定稿** | 斜置金框镜；facing 0..3 代码旋转 |
-| 镜子·托盘/拿起 | **`prop-mirror-tray.png`** | **定稿** | 立式金框镜 |
-| 照射光斑 | **`light-glow.png`** | **定稿** | 扫描态末端圆光斑；Additive 染色 |
-| 光束连接 | **`light-beam.png`** | **定稿** | 手电→光斑连接；独立图；Additive |
-| 可落格吸附框 | **`snap-frame.png`** | **定稿** | 可放手电时格上圆角框（替蓝描边）；透明外区 |
+| 镜子·盘上 / 投影 | **`prop-mirror-board.png`** | **定稿** | 斜置金框镜；facing×90 点旋；**勿再加光学偏移旋** |
+| 镜子·托盘 / 拿起本体 | **`prop-mirror-tray.png`** | **定稿** | 立式金框镜；拿起跟手用此图 |
+| 照射光斑 | **`light-glow.png`** | **定稿** | 拖灯跟手尖端 + 放置尽头格；Additive |
+| 光束连接 | **`light-beam.png`** | **定稿** | 手电→光斑 / 折线段；Additive |
+| 可落格吸附框 | **`snap-frame.png`** | **定稿** | 可放手电时格上框；与光效同 canvas Additive |
+| 拍照取景框 | **`camera-frame.png`** | **定稿** | Camera 全屏铬（中心透明）；快门/返回代码绘制 |
 
 ### 别名（与定稿同内容或兼容）
 
@@ -48,14 +50,17 @@
 | `assets/ghost-ref.png` / `assets/prop-light-ref.png` | 定稿参考备份 |
 | `assets/board-bg.jpg` | 背景备份 |
 
-**Step 1 最少依赖：**
+**当前可玩最少依赖：**
 
 ```
 public/board-bg.jpg
 public/ghost.png
 public/prop-light.png
+public/prop-mirror-board.png
+public/prop-mirror-tray.png
 public/light-glow.png
 public/light-beam.png
+public/snap-frame.png
 ```
 
 动画与朝向：**一物一图**；入场/待机为 CSS/transform，不拆帧序列。
@@ -64,11 +69,11 @@ public/light-beam.png
 
 ## 3. 草稿 / 未定稿（勿当最终美术）
 
-以下为 AI 试稿，**尚未玩家确认**；实现可先占位，勿当视觉定稿。
+以下为 AI 试稿或旧单图；**镜请用 §2 双图定稿**。
 
 | 文件 | type | 状态 |
 |------|------|------|
-| `prop-mirror.jpg` | mirror | 草稿 |
+| `prop-mirror.jpg` | mirror | 旧草稿（已被 board/tray 双图取代） |
 | `prop-beam_splitter.jpg` | beam_splitter | 草稿 |
 | `prop-diffuser.jpg` | diffuser | 草稿 |
 
@@ -109,3 +114,4 @@ const ASSETS = {
 | v0.1 | 一物一图初版 |
 | v0.2 | 定稿：board-bg / ghost / prop-light；草稿道具分离；实现最小集 |
 | v0.3 | Step1 最小集含 glow/beam；鬼图说明对齐现网 |
+| **v0.4** | 镜 board/tray 双图定稿；snap-frame；最少依赖对齐可玩状态 |

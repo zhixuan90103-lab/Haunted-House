@@ -2,10 +2,11 @@
 
 | | |
 |--|--|
-| 版本 | **v0.3** |
-| 状态 | **已冻结，供实现**；与 `PRODUCT.md` v0.4 对齐 |
+| 版本 | **v0.4** |
+| 状态 | **实现以代码 `optics.MIRROR_REFLECT` 为准**；与贴图标定同步 |
 | 范围 | R01–R08 + 反查补丁（§补漏） |
 | 非范围 | 斜向光、备选道具；交互见 `INTERACTION_SPEC.md` |
+| 进度 | `PROGRESS.md` |
 
 改算法先改本文 + `PRODUCT.md`，再改代码。
 
@@ -130,30 +131,34 @@ function computeLit(input) -> OpticsOutput:
 
 ## R02 · 基础镜 4 朝向映射表
 
-### 模型：单面直角镜
+### 模型：单面直角镜（实现标定 2026-08）
 
-每档 `facing ∈ {0,1,2,3}` 只接受 **两个入射方向** 做 90° 反射；其余入射 **当墙（停止）**。
+- 贴图本地边：`1=上 2=右 3=下 4=左`（随 facing×90 与盘上图同旋）。  
+- **正面 = 3、4**；**背面 = 1、2**（背面挡光）。  
+- 从 **3 进 → 折向 4**；从 **4 进 → 折向 3**。  
+- `facing=0` 时本地=世界：1N 2E 3S 4W → 光行进 **N→W、E→S**。  
+- `facing+1` 顺时针，整表方向 +90°。
 
-与「点击旋转 4 次有反馈」一致；几何上每 90° 换一对入射。
+每档只接受 **两个入射** 做 90° 反射；其余 **block**。
 
-| facing | 入射 → 出射 | 说明（直觉） |
-|--------|-------------|--------------|
-| **0** | N→E，E→N | 开口朝「北-东」角 |
-| **1** | E→S，S→E | 开口朝「东-南」角 |
-| **2** | S→W，W→S | 开口朝「南-西」角 |
-| **3** | W→N，N→W | 开口朝「西-北」角 |
+| facing | 入射 → 出射（实现表） |
+|--------|----------------------|
+| **0** | N→W，E→S |
+| **1** | E→N，S→W |
+| **2** | S→E，W→N |
+| **3** | W→S，N→E |
 
 ```ts
-const MIRROR_REFLECT: Record<0|1|2|3, Partial<Record<Dir, Dir>>> = {
-  0: { [Dir.N]: Dir.E, [Dir.E]: Dir.N },
-  1: { [Dir.E]: Dir.S, [Dir.S]: Dir.E },
-  2: { [Dir.S]: Dir.W, [Dir.W]: Dir.S },
-  3: { [Dir.W]: Dir.N, [Dir.N]: Dir.W },
+// 真源：src/game/optics.ts
+const MIRROR_REFLECT = {
+  0: { [Dir.N]: Dir.W, [Dir.E]: Dir.S },
+  1: { [Dir.E]: Dir.N, [Dir.S]: Dir.W },
+  2: { [Dir.S]: Dir.E, [Dir.W]: Dir.N },
+  3: { [Dir.W]: Dir.S, [Dir.N]: Dir.E },
 }
-
-function mirrorOut(facing, inDir): Dir | 'block':
-  return MIRROR_REFLECT[facing][inDir] ?? 'block'
 ```
+
+> 旧文档 NE 对角表已废弃；改反射只改 `optics.ts` 并回写本表。
 
 ### 镜格上的处理
 
@@ -531,3 +536,4 @@ if playing and allGhostsRevealed:
 | v0.1 | R01–R08 冻结 |
 | v0.2 | 反查补漏；与 INTERACTION_SPEC 分工 |
 | v0.3 | R07 首次出场 dwell 1s；`litSince`；真值表更新 |
+| **v0.4** | R02 镜表与实现标定对齐（3↔4 正面；N→W/E→S @f0） |

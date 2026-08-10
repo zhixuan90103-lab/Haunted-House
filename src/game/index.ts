@@ -11,7 +11,12 @@ import {
   type Board,
 } from './board';
 import { createScanHaptics } from './feel/scan-haptics';
-import { allGhostsFound, anyGhostCharging, stepGhosts } from './ghosts';
+import {
+  allGhostsFound,
+  allRevealed,
+  anyGhostCharging,
+  stepGhosts,
+} from './ghosts';
 import { attachInput } from './input';
 import {
   loadLevel,
@@ -38,7 +43,7 @@ import type {
   PropType,
   TrayItem,
 } from './types';
-import { cellKey, Dir } from './types';
+import { cellKey, Dir, GhostState, SessionPhase } from './types';
 import { applyPropStyleCss } from './propStyle';
 import { applyViewStyleCss } from './viewStyle';
 import {
@@ -60,6 +65,10 @@ import {
 } from './view/lightFx';
 import { mountHapticTuner } from './view/hapticTuner';
 import { mountPropTuner } from './view/propTuner';
+import { captureBoardDataUrl } from './view/captureBoard';
+import { mountCameraSession } from './view/cameraSession';
+import { mountIslandTuner } from './view/islandTuner';
+import { applyPrintLayoutCss } from './printLayout';
 
 export type MountGameOptions = {
   stage: HTMLElement;
@@ -89,6 +98,8 @@ type Runtime = {
   trayUnlocked: boolean;
   /** 本帧需滑入动画的托盘类型（paint 消费后清空） */
   trayEnterTypes: string[];
+  /** 会话相位：Playing / Camera / Capturing / Won */
+  phase: SessionPhase;
 };
 
 /** 全员 everLit → 镜等滑入托盘（只触发一次） */
@@ -177,7 +188,7 @@ function resolve(
     const ghostsPrev = rt.ghosts;
     const longRange = allGhostsFound(rt.ghosts);
 
-    // 光斑/连接：跟手；长度 = 朝向障碍（找全前短距 cap，找全后可照远）
+    // 光斑/连接：跟手；扫鬼固定短距，找全后可略长但有 glowForwardLong 上限
     const lenPx = freeShineLengthPx({
       lightX: drag.designX,
       lightY: drag.designY,
@@ -356,8 +367,12 @@ function paint(
   // 提示：找全鬼后提示可用镜
   if (rt.trayUnlocked) {
     els.hintEl.textContent =
-      '摆镜折光 · 点旋改朝向 · 全员显示后拍照（待做）';
+      '摆镜折光 · 点旋改朝向 · 全员同时显示后自动拍照';
   }
+}
+
+function markAllCaught(ghosts: Ghost[]): Ghost[] {
+  return ghosts.map((g) => ({ ...g, state: GhostState.Caught, litSince: undefined }));
 }
 
 export function mountGame(opts: MountGameOptions): GameHandle {
@@ -366,6 +381,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   const lightFx = mountLightFx(uiRoot);
   const ghostIdle = startGhostIdleLoop(uiRoot);
   const scanHaptics = createScanHaptics();
+  const camera = mountCameraSession(uiRoot);
+  applyPrintLayoutCss(uiRoot);
 
   let loaded: LoadedLevel = loadLevel(level001 as LevelDef);
   const rt: Runtime = {
@@ -379,6 +396,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     previewLight: null,
     trayUnlocked: false,
     trayEnterTypes: [],
+    phase: SessionPhase.Playing,
   };
 
   applyPropStyleCss(uiRoot);
@@ -386,7 +404,44 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   applyLayoutToDom(els);
   lightFx.layout();
 
+  const setPlayLock = (locked: boolean) => {
+    const pe = locked ? 'none' : 'auto';
+    els.boardHit.style.pointerEvents = pe;
+    els.tray.style.pointerEvents = pe;
+    // Camera：隐藏重制；Won：可用再玩一次（camera 层按钮）
+    els.restartBtn.style.display = locked ? 'none' : '';
+    els.restartBtn.style.pointerEvents = locked ? 'none' : 'auto';
+    uiRoot.classList.toggle('session-locked', locked);
+  };
+
+  const applyPhaseUi = () => {
+    const p = rt.phase;
+    if (p === SessionPhase.Playing) {
+      camera.setPhase('hidden');
+      setPlayLock(false);
+    } else if (p === SessionPhase.Camera) {
+      camera.setPhase('camera');
+      setPlayLock(true);
+    } else if (p === SessionPhase.Capturing) {
+      camera.setPhase('capturing');
+      setPlayLock(true);
+    } else {
+      camera.setPhase('won');
+      setPlayLock(true);
+    }
+  };
+
   const repaint = () => paint(els, rt, lightFx);
+
+  /** R21：非拖拽且全员 Revealed → Camera */
+  const maybeEnterCamera = () => {
+    if (rt.phase !== SessionPhase.Playing) return;
+    if (rt.drag) return;
+    if (!allRevealed(rt.ghosts)) return;
+    rt.phase = SessionPhase.Camera;
+    scanHaptics.end();
+    applyPhaseUi();
+  };
 
   /**
    * 首次出场 dwell 计时：
@@ -416,7 +471,14 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     dwellRaf = requestAnimationFrame(tick);
   };
   const afterResolve = () => {
+    if (rt.phase === SessionPhase.Playing) {
+      maybeEnterCamera();
+    }
     if (rt.drag?.type === 'light') {
+      stopDwellLoop();
+      return;
+    }
+    if (rt.phase !== SessionPhase.Playing) {
       stopDwellLoop();
       return;
     }
@@ -434,6 +496,14 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     },
   });
   const hapticTuner = mountHapticTuner(uiRoot);
+  const islandTuner = mountIslandTuner(uiRoot, {
+    onChange: () => {
+      applyPrintLayoutCss(uiRoot);
+    },
+    onPreview: (on) => {
+      camera.setIslandPreview(on);
+    },
+  });
 
   resolve(rt, scanHaptics);
   repaint();
@@ -451,19 +521,57 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.def = loaded.def;
     rt.trayUnlocked = false;
     rt.trayEnterTypes = [];
+    rt.phase = SessionPhase.Playing;
     resetGhostAppear();
     resetTrayDomCache();
     resetTrayScroll();
     stopDwellLoop();
     scanHaptics.end();
+    applyPhaseUi();
     resolve(rt, scanHaptics);
     repaint();
     afterResolve();
   };
 
+  const onReturnFromCamera = () => {
+    if (rt.phase !== SessionPhase.Camera) return;
+    rt.phase = SessionPhase.Playing;
+    applyPhaseUi();
+    resolve(rt, scanHaptics);
+    repaint();
+    afterResolve(); // 仍全显则再进 Camera
+  };
+
+  const onShutter = async () => {
+    if (rt.phase !== SessionPhase.Camera) return;
+    rt.phase = SessionPhase.Capturing;
+    applyPhaseUi();
+    try {
+      // 先截（含全亮棋盘），再播闪白/吐纸
+      const dataUrl = await captureBoardDataUrl(uiRoot);
+      await camera.playCapture(dataUrl);
+      rt.ghosts = markAllCaught(rt.ghosts);
+      rt.phase = SessionPhase.Won;
+      applyPhaseUi();
+      repaint();
+    } catch (err) {
+      console.error('[camera] capture failed', err);
+      // 截失败：回 Camera 可重拍，不写 Caught
+      rt.phase = SessionPhase.Camera;
+      applyPhaseUi();
+    }
+  };
+
+  camera.onShutter(() => {
+    void onShutter();
+  });
+  camera.onReturn(onReturnFromCamera);
+  camera.onReplay(restart);
+
   els.restartBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     e.preventDefault();
+    if (rt.phase !== SessionPhase.Playing) return;
     restart();
   });
   els.restartBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -472,6 +580,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     getBoard: () => rt.board,
     getTray: () => rt.tray,
     getTrayTrack: () => els.trayTrack,
+    isInputLocked: () => rt.phase !== SessionPhase.Playing,
     setDrag: (d) => {
       rt.drag = d;
       // 拖灯：停掉 dwell，避免与 input rAF 双开
@@ -489,6 +598,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       return true;
     },
     onDragMove: () => {
+      if (rt.phase !== SessionPhase.Playing) return;
       resolve(rt, scanHaptics);
       repaint();
       afterResolve();
@@ -532,6 +642,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       afterResolve();
     },
     onRotate: (x, y) => {
+      if (rt.phase !== SessionPhase.Playing) return;
       if (rotatePropAt(rt.board, x, y)) {
         resolve(rt, scanHaptics);
         repaint();
@@ -543,18 +654,21 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   els.boardHit.style.pointerEvents = 'auto';
   els.tray.style.pointerEvents = 'auto';
   els.hud.style.pointerEvents = 'auto';
+  applyPhaseUi();
 
   return {
     dispose: () => {
       stopDwellLoop();
       scanHaptics.end();
       detach();
+      camera.dispose();
       ghostIdle.stop();
       tuner.dispose();
       hapticTuner.dispose();
+      islandTuner.dispose();
       lightFx.dispose();
       uiRoot.replaceChildren();
-      uiRoot.classList.remove('game-ui');
+      uiRoot.classList.remove('game-ui', 'session-locked');
     },
     restart,
   };

@@ -71,6 +71,7 @@ const HIDDEN_KEYS = new Set<string>([
   'glowSize',
   'glowAlpha',
   'glowForward',
+  'glowForwardLong',
   'glowSide',
   'glowOffsetX',
   'glowOffsetY',

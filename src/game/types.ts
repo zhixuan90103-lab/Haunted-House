@@ -90,6 +90,8 @@ export type LevelDef = {
 export enum SessionPhase {
   Playing = 'playing',
   Camera = 'camera',
+  /** 快门后：截屏 → 闪白 → 吐纸（锁输入） */
+  Capturing = 'capturing',
   Won = 'won',
 }
 

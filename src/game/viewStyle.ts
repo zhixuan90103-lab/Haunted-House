@@ -11,8 +11,14 @@ export type ViewStyle = {
   glowAlpha: number;
   /**
    * 拖动手电时：光斑沿朝向的前移距离（格）
+   * 扫鬼阶段固定用此值
    */
   glowForward: number;
+  /**
+   * 找全鬼后：光斑前移上限（格）。可大于 glowForward，但须有限，
+   * 否则 env 拉到墙时光斑贴远墙、横移不像跟手。
+   */
+  glowForwardLong: number;
   /**
    * 拖动手电时：光斑相对朝向的侧移（格）
    * + = 朝向右侧；− = 左侧
@@ -79,6 +85,7 @@ export const VIEW_STYLE: ViewStyle = {
   glowSize: 210,
   glowAlpha: 0.5,
   glowForward: 2,
+  glowForwardLong: 4,
   glowSide: 0,
   glowOffsetX: 0,
   glowOffsetY: 0,
@@ -125,6 +132,7 @@ export function viewStyleSnapshot(): string {
     `  glowSize: ${v.glowSize},`,
     `  glowAlpha: ${v.glowAlpha},`,
     `  glowForward: ${v.glowForward},`,
+    `  glowForwardLong: ${v.glowForwardLong},`,
     `  glowSide: ${v.glowSide},`,
     `  glowOffsetX: ${v.glowOffsetX},`,
     `  glowOffsetY: ${v.glowOffsetY},`,
