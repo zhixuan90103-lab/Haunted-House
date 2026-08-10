@@ -1,107 +1,221 @@
 /**
- * 假灵动岛 + 吐相布局 SSOT（设计坐标 390×844）。
- * 调参面板写这里；cameraSession / CSS vars 读取。
+ * 假灵动岛 + Mask + 吐相布局 SSOT（设计坐标 390×844）。
  */
 
 export type PrintLayout = {
-  /** 岛顶边距 design px */
+  // —— 岛 ——
+  /** 岛上边缘 top */
   islandTop: number;
-  /** 岛水平中心 0–390（默认 195） */
   islandCenterX: number;
-  /** 岛宽 */
   islandWidth: number;
-  /** 岛高 */
   islandHeight: number;
-  /** 阶段1：从岛缝滑出（定宽=岛宽）ms */
-  slideOutMs: number;
-  /** 阶段2：滑出后放大飞到终点 ms */
-  flyMs: number;
-  /** @deprecated 兼容旧调参，= slideOutMs + flyMs */
-  ejectMs: number;
-  /** 结算相纸垂直位置 %（相对舞台高度，用于 top） */
-  finalTopPercent: number;
-  /** 定稿相纸宽 design px */
-  polaroidWidth: number;
+  /** 上下半切割 0~1（相对岛高，0.5=正中） */
+  seamRatio: number;
+  /** 岛颜色 */
+  islandColor: string;
+
+  // —— Mask（出岛可见区，默认整屏宽）——
+  maskWidth: number;
+  /** Mask 左边缘；居中时 = (390-width)/2 */
+  maskLeft: number;
   /**
-   * 阶段1 视觉宽度占岛宽比例（0–1）。
-   * 例如 0.55 → 出岛时比岛窄一截，更小。
+   * Mask 顶边。
+   * 若 maskFollowIslandTop=true，应用时强制 = islandTop。
    */
+  maskTop: number;
+  maskHeight: number;
+  /** Mask 顶是否跟随岛上边缘 */
+  maskFollowIslandTop: boolean;
+
+  // —— 照片（出岛过程）——
+  /** 出岛时视觉宽 / 岛宽 */
   phase1WidthRatio: number;
+  /** 终点最大宽 */
+  polaroidMaxWidth: number;
+  finalCenterX: number;
+  /** 终点 top（相纸中心），design px */
+  finalTop: number;
+  /** 终点旋转角 deg（负=逆时针） */
+  finalRotateDeg: number;
+
+  // —— 结算文案 / 再玩一次（绝对定位，中心点）——
+  titleCenterX: number;
+  titleCenterY: number;
+  /** 「抓到了」字号 design px */
+  titleFontSize: number;
+  replayCenterX: number;
+  replayCenterY: number;
+  /** 「再玩一次」字号 design px */
+  replayFontSize: number;
+  /** 按钮最小高度 design px */
+  replayMinHeight: number;
+  /** 按钮最小宽度 design px */
+  replayMinWidth: number;
+
+  // —— 时间 ——
+  slideOutMs: number;
+  flyMs: number;
+  /** = slide + fly，兼容 */
+  ejectMs: number;
 };
 
 export const DEFAULT_PRINT_LAYOUT: PrintLayout = {
-  islandTop: 48,
+  islandTop: 10,
   islandCenterX: 195,
-  islandWidth: 120,
+  islandWidth: 160,
   islandHeight: 36,
-  /** 从 Mask 滑出 */
+  seamRatio: 0.5,
+  islandColor: '#000000',
+
+  maskWidth: 390,
+  maskLeft: 0,
+  maskTop: 10,
+  maskHeight: 834,
+  maskFollowIslandTop: true,
+
+  phase1WidthRatio: 0.75,
+  polaroidMaxWidth: 330,
+  finalCenterX: 195,
+  finalTop: 385,
+  finalRotateDeg: -6,
+
+  titleCenterX: 195,
+  titleCenterY: 166,
+  titleFontSize: 40,
+  replayCenterX: 195,
+  replayCenterY: 653,
+  replayFontSize: 22,
+  replayMinHeight: 55,
+  replayMinWidth: 212,
+
   slideOutMs: 1400,
-  /** 飞向终点：稍长 + 缓动在 CSS/WAAPI */
   flyMs: 1100,
   ejectMs: 2500,
-  finalTopPercent: 42,
-  polaroidWidth: 220,
-  /** 出岛时视觉宽 ≈ 岛宽 × 0.75 */
-  phase1WidthRatio: 0.75,
 };
 
 export const PRINT_LAYOUT: PrintLayout = { ...DEFAULT_PRINT_LAYOUT };
 
 export function setPrintLayout(partial: Partial<PrintLayout>): void {
   Object.assign(PRINT_LAYOUT, partial);
+  if (PRINT_LAYOUT.maskFollowIslandTop) {
+    PRINT_LAYOUT.maskTop = PRINT_LAYOUT.islandTop;
+  }
+  // mask 高默认贴底（若跟随时）
+  if (
+    partial.islandTop != null ||
+    partial.maskTop != null ||
+    partial.maskFollowIslandTop != null
+  ) {
+    const top = PRINT_LAYOUT.maskFollowIslandTop
+      ? PRINT_LAYOUT.islandTop
+      : PRINT_LAYOUT.maskTop;
+    if (partial.maskHeight == null && PRINT_LAYOUT.maskFollowIslandTop) {
+      PRINT_LAYOUT.maskHeight = Math.max(40, 844 - top);
+    }
+  }
+  PRINT_LAYOUT.ejectMs = PRINT_LAYOUT.slideOutMs + PRINT_LAYOUT.flyMs;
 }
 
 export function resetPrintLayout(): void {
-  Object.assign(PRINT_LAYOUT, DEFAULT_PRINT_LAYOUT);
+  Object.assign(PRINT_LAYOUT, { ...DEFAULT_PRINT_LAYOUT });
 }
 
-/** 写到元素 / :root 上的 CSS 变量 */
-export function applyPrintLayoutCss(el: HTMLElement = document.documentElement): void {
+/** 派生几何（拍照动画用） */
+export function getPrintGeometry() {
   const L = PRINT_LAYOUT;
-  // 若只改了 ejectMs，按比例拆两段；优先独立 slide/fly
-  const slide = L.slideOutMs;
-  const fly = L.flyMs;
-  L.ejectMs = slide + fly;
-
-  const islandHalf = L.islandHeight / 2;
-  const seamY = L.islandTop + islandHalf;
+  const seamRatio = Math.min(0.95, Math.max(0.05, L.seamRatio));
+  const topH = L.islandHeight * seamRatio;
+  const botH = L.islandHeight - topH;
+  const seamY = L.islandTop + topH;
   const islandBottom = L.islandTop + L.islandHeight;
-  // 阶段1：更小，视觉宽 = 岛宽 * ratio（不超过岛）
+
+  const maskTop = L.maskFollowIslandTop ? L.islandTop : L.maskTop;
+  const maskLeft = L.maskLeft;
+  const maskW = L.maskWidth;
+  const maskH = L.maskHeight;
+
   const ratio = Math.min(1, Math.max(0.25, L.phase1WidthRatio));
-  const s = Math.min(1, (L.islandWidth * ratio) / L.polaroidWidth);
-  // 相纸在阶段1 的总高（上12 + 图方 + 下36）* s
-  const cardH = (12 + L.polaroidWidth + 36) * s;
+  const phase1Scale = Math.min(1, (L.islandWidth * ratio) / L.polaroidMaxWidth);
+  // 相纸总高（padding 12+36 + 方图）
+  const cardH = (12 + L.polaroidMaxWidth + 36) * phase1Scale;
+
+  // 相对 Mask 顶的 Y（相纸 top=0 在 clip 内）
+  // 起点：整张在缝上方（相对 maskTop）
+  const slideStartTy = seamY - maskTop - cardH;
+  // 终点：顶边刚过岛底
+  const slideEndTy = islandBottom - maskTop + 4;
+
+  return {
+    L,
+    topH,
+    botH,
+    seamY,
+    islandBottom,
+    maskTop,
+    maskLeft,
+    maskW,
+    maskH,
+    phase1Scale,
+    cardH,
+    slideStartTy,
+    slideEndTy,
+    /** 阶段2 起点：相纸顶边 design Y */
+    flyStartTop: islandBottom + 4,
+    flyStartCX: L.islandCenterX,
+    finalTop: L.finalTop,
+    finalCX: L.finalCenterX,
+  };
+}
+
+/** 写到元素 CSS 变量 */
+export function applyPrintLayoutCss(el: HTMLElement = document.documentElement): void {
+  if (PRINT_LAYOUT.maskFollowIslandTop) {
+    PRINT_LAYOUT.maskTop = PRINT_LAYOUT.islandTop;
+  }
+  PRINT_LAYOUT.ejectMs = PRINT_LAYOUT.slideOutMs + PRINT_LAYOUT.flyMs;
+
+  const g = getPrintGeometry();
+  const { L } = g;
 
   el.style.setProperty('--print-island-top', `${L.islandTop}px`);
   el.style.setProperty('--print-island-cx', `${L.islandCenterX}px`);
   el.style.setProperty('--print-island-w', `${L.islandWidth}px`);
   el.style.setProperty('--print-island-h', `${L.islandHeight}px`);
-  el.style.setProperty('--print-island-half', `${islandHalf}px`);
-  el.style.setProperty('--print-seam-y', `${seamY}px`);
-  el.style.setProperty('--print-island-bottom', `${islandBottom}px`);
-  el.style.setProperty('--print-slide-ms', `${slide}ms`);
-  el.style.setProperty('--print-fly-ms', `${fly}ms`);
-  el.style.setProperty('--print-polaroid-w', `${L.polaroidWidth}px`);
-  el.style.setProperty('--print-phase1-scale', String(s));
-  el.style.setProperty('--print-phase1-card-h', `${cardH}px`);
-  // 裁切窗：从缝线向下，遮住仍在岛内/上方的部分
-  el.style.setProperty('--print-clip-top', `${seamY}px`);
-  el.style.setProperty(
-    '--print-clip-h',
-    `${Math.max(cardH + islandHalf + 24, 844 - seamY)}px`,
-  );
-  // 阶段1 结束（在 clip 内）：相纸顶边越过岛底 = 完全滑出
-  // clip 顶 = seam，相纸 top=0 时 translateY = islandBottom - seam = islandHalf + 4
-  el.style.setProperty(
-    '--print-slide-end-ty',
-    `${islandHalf + 4}px`,
-  );
-  // 阶段2 起点（挂回 printLayer 后的 design 坐标）
-  el.style.setProperty(
-    '--print-slide-end-top',
-    `${islandBottom + 4}px`,
-  );
-  const finalTopPx = (L.finalTopPercent / 100) * 844;
-  el.style.setProperty('--print-final-top', `${finalTopPx}px`);
-  el.style.setProperty('--print-final-cx', `195px`);
+  el.style.setProperty('--print-island-top-h', `${g.topH}px`);
+  el.style.setProperty('--print-island-bot-h', `${g.botH}px`);
+  el.style.setProperty('--print-island-bot-top', `${L.islandTop + g.topH}px`);
+  el.style.setProperty('--print-seam-y', `${g.seamY}px`);
+  el.style.setProperty('--print-island-bottom', `${g.islandBottom}px`);
+  el.style.setProperty('--print-island-color', L.islandColor);
+
+  el.style.setProperty('--print-mask-left', `${g.maskLeft}px`);
+  el.style.setProperty('--print-mask-top', `${g.maskTop}px`);
+  el.style.setProperty('--print-mask-w', `${g.maskW}px`);
+  el.style.setProperty('--print-mask-h', `${g.maskH}px`);
+
+  el.style.setProperty('--print-slide-ms', `${L.slideOutMs}ms`);
+  el.style.setProperty('--print-fly-ms', `${L.flyMs}ms`);
+  el.style.setProperty('--print-polaroid-w', `${L.polaroidMaxWidth}px`);
+  el.style.setProperty('--print-phase1-scale', String(g.phase1Scale));
+  el.style.setProperty('--print-phase1-card-h', `${g.cardH}px`);
+  el.style.setProperty('--print-slide-start-ty', `${g.slideStartTy}px`);
+  el.style.setProperty('--print-slide-end-ty', `${g.slideEndTy}px`);
+  el.style.setProperty('--print-fly-start-top', `${g.flyStartTop}px`);
+  el.style.setProperty('--print-fly-start-cx', `${g.flyStartCX}px`);
+  el.style.setProperty('--print-final-top', `${g.finalTop}px`);
+  el.style.setProperty('--print-final-cx', `${g.finalCX}px`);
+  el.style.setProperty('--print-final-rot', `${L.finalRotateDeg}deg`);
+  el.style.setProperty('--settle-title-x', `${L.titleCenterX}px`);
+  el.style.setProperty('--settle-title-y', `${L.titleCenterY}px`);
+  el.style.setProperty('--settle-title-size', `${L.titleFontSize}px`);
+  el.style.setProperty('--settle-replay-x', `${L.replayCenterX}px`);
+  el.style.setProperty('--settle-replay-y', `${L.replayCenterY}px`);
+  el.style.setProperty('--settle-replay-font', `${L.replayFontSize}px`);
+  el.style.setProperty('--settle-replay-h', `${L.replayMinHeight}px`);
+  el.style.setProperty('--settle-replay-w', `${L.replayMinWidth}px`);
+  // 内边距随按钮高度略缩放
+  const py = Math.max(6, Math.round(L.replayMinHeight * 0.22));
+  const px = Math.max(16, Math.round(L.replayMinWidth * 0.16));
+  el.style.setProperty('--settle-replay-py', `${py}px`);
+  el.style.setProperty('--settle-replay-px', `${px}px`);
 }

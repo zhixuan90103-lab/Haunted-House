@@ -172,6 +172,10 @@ export function createScanHaptics(): ScanHapticsHandle {
     if (any) beginRevealSequence(gen);
   };
 
+  /**
+   * 过未发现鬼格：光斑中心换到鬼格时轻震。
+   * 扫描中普通换格不震（手电投影换格仅在可落格吸附时由 placement-haptics 处理）。
+   */
   const maybeGhostPass = (
     spotCell: { x: number; y: number } | null,
     ghosts: Ghost[],

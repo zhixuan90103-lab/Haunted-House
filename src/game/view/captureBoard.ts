@@ -1,6 +1,6 @@
 /**
  * Capture board region for polaroid.
- * Hides camera chrome during capture; composites bg + board + light.
+ * Mobile: 轻量合成优先，避免长时间卡死感。
  */
 
 import { BOARD_LAYOUT } from '../layout';
@@ -27,6 +27,26 @@ export function boardCaptureRect(): CaptureRect {
   };
 }
 
+function isMobileLike(): boolean {
+  try {
+    if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      return true;
+    }
+    if (typeof window !== 'undefined' && window.innerWidth > 0 && window.innerWidth < 520) {
+      return true;
+    }
+  } catch {
+    /* */
+  }
+  return false;
+}
+
+function captureDpr(): number {
+  const raw = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
+  // 手机限 1，大幅降低截屏耗时
+  return isMobileLike() ? 1 : Math.min(raw, 2);
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -46,6 +66,22 @@ function waitFrames(n: number): Promise<void> {
       else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  });
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = window.setTimeout(() => reject(new Error(`[capture] timeout ${label} ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
   });
 }
 
@@ -72,36 +108,28 @@ function isMostlyBlack(canvas: HTMLCanvasElement): boolean {
   }
 }
 
-/** Temporarily hide camera UI so capture sees the game. */
-async function withCameraHidden<T>(
+/**
+ * 截屏时只藏取景框/按钮，保留 print 蒙黑与闪白，避免「整屏消失像卡死」。
+ */
+async function withChromeHiddenForCapture<T>(
   uiRoot: HTMLElement,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const cam = uiRoot.querySelector('.camera-session') as HTMLElement | null;
-  const prev = cam?.getAttribute('style') ?? null;
-  if (cam) {
-    cam.style.setProperty('display', 'none', 'important');
-    cam.style.setProperty('visibility', 'hidden', 'important');
-    cam.style.setProperty('opacity', '0', 'important');
-  }
-  // Bake light blend for DOM capture
+  uiRoot.classList.add('is-dom-capturing');
   const lights = uiRoot.querySelectorAll<HTMLCanvasElement>('.board-light-canvas');
   const prevBlend: string[] = [];
   lights.forEach((c) => {
     prevBlend.push(c.style.mixBlendMode);
     c.style.mixBlendMode = 'screen';
   });
-  await waitFrames(2);
+  await waitFrames(1);
   try {
     return await fn();
   } finally {
     lights.forEach((c, i) => {
       c.style.mixBlendMode = prevBlend[i] ?? '';
     });
-    if (cam) {
-      if (prev == null) cam.removeAttribute('style');
-      else cam.setAttribute('style', prev);
-    }
+    uiRoot.classList.remove('is-dom-capturing');
   }
 }
 
@@ -109,35 +137,39 @@ async function tryDomToCanvas(
   el: HTMLElement,
   opts: { width?: number; height?: number; bgcolor?: string | null },
 ): Promise<HTMLCanvasElement | null> {
-  const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 2, 2);
-  // modern-screenshot
+  const dpr = captureDpr();
   try {
     const { domToCanvas } = await import('modern-screenshot');
-    const canvas = await domToCanvas(el, {
-      scale: dpr,
-      width: opts.width,
-      height: opts.height,
-      backgroundColor: opts.bgcolor ?? undefined,
-      style: {
-        // ensure design size while capturing
-        transform: 'none',
-        margin: '0',
-      },
-    });
+    const canvas = await withTimeout(
+      domToCanvas(el, {
+        scale: dpr,
+        width: opts.width,
+        height: opts.height,
+        backgroundColor: opts.bgcolor ?? undefined,
+        style: { transform: 'none', margin: '0' },
+      }),
+      isMobileLike() ? 2000 : 4000,
+      'domToCanvas',
+    );
     if (canvas && canvas.width > 8 && !isMostlyBlack(canvas)) return canvas;
   } catch (e) {
     console.warn('[capture] modern-screenshot failed', e);
   }
-  // snapdom
+  // 手机跳过 snapdom 二次尝试（慢）
+  if (isMobileLike()) return null;
   try {
     const { snapdom } = await import('@zumer/snapdom');
-    const canvas = await snapdom.toCanvas(el, {
-      dpr,
-      scale: 1,
-      backgroundColor: opts.bgcolor ?? undefined,
-      outerTransforms: false,
-      fast: true,
-    });
+    const canvas = await withTimeout(
+      snapdom.toCanvas(el, {
+        dpr,
+        scale: 1,
+        backgroundColor: opts.bgcolor ?? undefined,
+        outerTransforms: false,
+        fast: true,
+      }),
+      3000,
+      'snapdom',
+    );
     if (canvas && canvas.width > 8 && !isMostlyBlack(canvas)) return canvas;
   } catch (e) {
     console.warn('[capture] snapdom failed', e);
@@ -145,14 +177,12 @@ async function tryDomToCanvas(
   return null;
 }
 
-/**
- * Composite: stage bg crop + board DOM + light canvas.
- */
+/** 轻量合成：bg + sprites + light（手机主路径） */
 async function compositeCapture(
   uiRoot: HTMLElement,
   rect: CaptureRect,
 ): Promise<string> {
-  const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 2, 2);
+  const dpr = captureDpr();
   const out = document.createElement('canvas');
   out.width = Math.max(1, Math.round(rect.width * dpr));
   out.height = Math.max(1, Math.round(rect.height * dpr));
@@ -161,7 +191,6 @@ async function compositeCapture(
   ctx.fillStyle = '#1a1520';
   ctx.fillRect(0, 0, rect.width, rect.height);
 
-  // 1) Background
   const bg = uiRoot.querySelector('.stage-bg') as HTMLElement | null;
   if (bg) {
     const url = getComputedStyle(bg).backgroundImage;
@@ -190,30 +219,30 @@ async function compositeCapture(
     }
   }
 
-  // 2) Board (grid + props + ghosts)
-  const boardHit = uiRoot.querySelector('#board-hit') as HTMLElement | null;
-  if (boardHit) {
-    const piece = await tryDomToCanvas(boardHit, {
-      width: BOARD_LAYOUT.size,
-      height: BOARD_LAYOUT.size,
-      bgcolor: null,
-    });
-    if (piece) {
-      const padX = BOARD_LAYOUT.left - rect.x;
-      const padY = BOARD_LAYOUT.top - rect.y;
-      ctx.drawImage(piece, padX, padY, BOARD_LAYOUT.size, BOARD_LAYOUT.size);
-    } else {
-      // Manual ghost + prop draw from live DOM images
-      await drawDomSprites(ctx, uiRoot, rect);
+  // 优先直接画 DOM 里的 img（比整板 dom-to-canvas 快）
+  await drawDomSprites(ctx, uiRoot, rect);
+
+  // 桌面再尝试整板一次提升道具一致性；手机跳过
+  if (!isMobileLike()) {
+    const boardHit = uiRoot.querySelector('#board-hit') as HTMLElement | null;
+    if (boardHit) {
+      const piece = await tryDomToCanvas(boardHit, {
+        width: BOARD_LAYOUT.size,
+        height: BOARD_LAYOUT.size,
+        bgcolor: null,
+      });
+      if (piece) {
+        const padX = BOARD_LAYOUT.left - rect.x;
+        const padY = BOARD_LAYOUT.top - rect.y;
+        ctx.drawImage(piece, padX, padY, BOARD_LAYOUT.size, BOARD_LAYOUT.size);
+      }
     }
   }
 
-  // 3) Light canvas (design 390×844)
   const light = uiRoot.querySelector('.board-light-canvas') as HTMLCanvasElement | null;
   if (light && light.width > 0 && light.height > 0) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    // light canvas CSS size is 390×844; bitmap may be 1:1 design px
     const srcW = light.width;
     const srcH = light.height;
     const sx = (rect.x / 390) * srcW;
@@ -227,6 +256,56 @@ async function compositeCapture(
   return out.toDataURL('image/png');
 }
 
+/** 读取 CSS transform 旋转角（度）。手电/镜朝向在 img 上 rotate。 */
+function cssRotationDeg(el: Element): number {
+  try {
+    const t = getComputedStyle(el).transform;
+    if (!t || t === 'none') return 0;
+    const m2 = /^matrix\((.+)\)$/.exec(t);
+    if (m2) {
+      const p = m2[1].split(',').map((x) => Number(x.trim()));
+      if (p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+        return (Math.atan2(p[1], p[0]) * 180) / Math.PI;
+      }
+    }
+    const m3 = /^matrix3d\((.+)\)$/.exec(t);
+    if (m3) {
+      const p = m3[1].split(',').map((x) => Number(x.trim()));
+      // matrix3d: a00=p[0], a10=p[1]
+      if (p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+        return (Math.atan2(p[1], p[0]) * 180) / Math.PI;
+      }
+    }
+    const rot = /rotate\(([-\d.]+)deg\)/.exec(
+      (el as HTMLElement).style?.transform ?? '',
+    );
+    if (rot) return Number(rot[1]) || 0;
+  } catch {
+    /* */
+  }
+  return 0;
+}
+
+/**
+ * 画带 CSS 旋转的图：中心对齐 AABB 中心，按未旋转 layout 尺寸 + rotate。
+ * 旧逻辑直接 drawImage 会丢掉 img 上的 rotate，导致合影手电朝向错误。
+ */
+function drawImageWithCssRotate(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  centerX: number,
+  centerY: number,
+  drawW: number,
+  drawH: number,
+  deg: number,
+): void {
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  if (deg !== 0) ctx.rotate((deg * Math.PI) / 180);
+  ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.restore();
+}
+
 async function drawDomSprites(
   ctx: CanvasRenderingContext2D,
   uiRoot: HTMLElement,
@@ -235,21 +314,31 @@ async function drawDomSprites(
   const rootR = uiRoot.getBoundingClientRect();
   const scale = rootR.width / 390 || 1;
 
+  // 道具：画 .prop-sprite > img（带 rotate）；鬼/墙同理
   const nodes = uiRoot.querySelectorAll<HTMLElement>(
-    '#board-hit img, #board-hit .wall-mark, .board-ghost-layer img, .board-ghost-layer .ghost-sprite',
+    '#board-hit .prop-sprite img, #board-hit .wall-mark, .board-ghost-layer img, .board-ghost-layer .ghost-base, .board-ghost-layer .ghost-lit-add',
   );
 
   for (const node of nodes) {
     const r = node.getBoundingClientRect();
-    const dx = (r.left - rootR.left) / scale - rect.x;
-    const dy = (r.top - rootR.top) / scale - rect.y;
-    const dw = r.width / scale;
-    const dh = r.height / scale;
+    // AABB 中心（设计坐标，相对 capture rect）
+    const cx = (r.left + r.width / 2 - rootR.left) / scale - rect.x;
+    const cy = (r.top + r.height / 2 - rootR.top) / scale - rect.y;
+
+    // 未旋转时的逻辑尺寸（offset 不受 rotate 影响，更准）
+    const layoutW = Math.max(1, node.offsetWidth || r.width / scale);
+    const layoutH = Math.max(1, node.offsetHeight || r.height / scale);
+    // offset 在 stage scale 前是 design px；若被浏览器当成 CSS px 与 scale 一致
+    // 视觉尺寸 ≈ getBoundingClientRect / scale 对未旋转元素；旋转后 AABB 变大
+    // 优先 offsetWidth；若异常再用 unrotated estimate
+    const dw = layoutW > 0 ? layoutW : r.width / scale;
+    const dh = layoutH > 0 ? layoutH : r.height / scale;
     if (dw < 1 || dh < 1) continue;
 
     if (node instanceof HTMLImageElement && node.naturalWidth > 0) {
       try {
-        ctx.drawImage(node, dx, dy, dw, dh);
+        const deg = cssRotationDeg(node);
+        drawImageWithCssRotate(ctx, node, cx, cy, dw, dh, deg);
       } catch {
         /* */
       }
@@ -258,7 +347,8 @@ async function drawDomSprites(
     const img = node.querySelector('img');
     if (img && img.naturalWidth > 0) {
       try {
-        ctx.drawImage(img, dx, dy, dw, dh);
+        const deg = cssRotationDeg(img) || cssRotationDeg(node);
+        drawImageWithCssRotate(ctx, img, cx, cy, dw, dh, deg);
       } catch {
         /* */
       }
@@ -268,52 +358,85 @@ async function drawDomSprites(
 
 /**
  * Capture board area as PNG data URL.
+ * 手机：直接轻量合成（秒级内）；桌面：可尝试更高质量路径。
  */
 export async function captureBoardDataUrl(uiRoot: HTMLElement): Promise<string> {
   const rect = boardCaptureRect();
-  return withCameraHidden(uiRoot, async () => {
-    // Full ui-root clip attempt (game only, chrome hidden)
+  return withChromeHiddenForCapture(uiRoot, async () => {
+    // 主路径：合成（手机友好）
     try {
-      const { domToCanvas } = await import('modern-screenshot');
-      const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 2, 2);
-      const full = await domToCanvas(uiRoot, {
-        scale: dpr,
-        width: 390,
-        height: 844,
-        backgroundColor: '#0b1020',
-        filter: (el) => {
-          if (!(el instanceof Element)) return true;
-          if (el.closest?.('.camera-session')) return false;
-          if (el.closest?.('#prop-tuner, #haptic-tuner, #prop-tuner-fab, #haptic-tuner-fab'))
-            return false;
-          if (el.closest?.('#tray, .game-tray, #drag-layer, .game-hud')) return false;
-          return true;
-        },
-        style: { transform: 'none' },
-      });
-      if (full && !isMostlyBlack(full)) {
-        // Crop to rect
-        const out = document.createElement('canvas');
-        out.width = Math.round(rect.width * dpr);
-        out.height = Math.round(rect.height * dpr);
-        const ctx = out.getContext('2d')!;
-        ctx.drawImage(
-          full,
-          rect.x * dpr,
-          rect.y * dpr,
-          rect.width * dpr,
-          rect.height * dpr,
-          0,
-          0,
-          out.width,
-          out.height,
-        );
-        if (!isMostlyBlack(out)) return out.toDataURL('image/png');
-      }
+      const url = await withTimeout(
+        compositeCapture(uiRoot, rect),
+        isMobileLike() ? 2800 : 5000,
+        'composite',
+      );
+      if (url && url.length > 64) return url;
     } catch (e) {
-      console.warn('[capture] full root failed', e);
+      console.warn('[capture] composite failed', e);
     }
 
-    return compositeCapture(uiRoot, rect);
+    // 桌面兜底：整板库
+    if (!isMobileLike()) {
+      try {
+        const { domToCanvas } = await import('modern-screenshot');
+        const dpr = captureDpr();
+        const full = await withTimeout(
+          domToCanvas(uiRoot, {
+            scale: dpr,
+            width: 390,
+            height: 844,
+            backgroundColor: '#0b1020',
+            filter: (el) => {
+              if (!(el instanceof Element)) return true;
+              if (el.closest?.('.camera-session')) return false;
+              if (
+                el.closest?.(
+                  '#prop-tuner, #haptic-tuner, #prop-tuner-fab, #haptic-tuner-fab, #island-tuner-fab, #island-tuner, #settle-tuner, #settle-tuner-fab, .settle-tuner, .settle-tuner-fab, .settle-tuner-wrap',
+                )
+              )
+                return false;
+              if (el.closest?.('#tray, .game-tray, #drag-layer, .game-hud')) return false;
+              return true;
+            },
+            style: { transform: 'none' },
+          }),
+          4000,
+          'full-root',
+        );
+        if (full && !isMostlyBlack(full)) {
+          const out = document.createElement('canvas');
+          out.width = Math.round(rect.width * dpr);
+          out.height = Math.round(rect.height * dpr);
+          const ctx = out.getContext('2d')!;
+          ctx.drawImage(
+            full,
+            rect.x * dpr,
+            rect.y * dpr,
+            rect.width * dpr,
+            rect.height * dpr,
+            0,
+            0,
+            out.width,
+            out.height,
+          );
+          if (!isMostlyBlack(out)) return out.toDataURL('image/png');
+        }
+      } catch (e) {
+        console.warn('[capture] full root failed', e);
+      }
+    }
+
+    // 最后兜底：纯色 + 尽量画 sprites
+    try {
+      return await compositeCapture(uiRoot, rect);
+    } catch {
+      const c = document.createElement('canvas');
+      c.width = 200;
+      c.height = 200;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#1a1520';
+      ctx.fillRect(0, 0, 200, 200);
+      return c.toDataURL('image/png');
+    }
   });
 }

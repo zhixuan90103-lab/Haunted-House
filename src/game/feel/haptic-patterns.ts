@@ -45,6 +45,33 @@ export function playGhostPassPattern(): void {
   });
 }
 
+/** 手电投影换格（吸附格变化） */
+export function playLightProjPattern(): void {
+  playHit({
+    intensity: SCAN_HAPTIC.lightProjIntensity,
+    sharpness: SCAN_HAPTIC.lightProjSharpness,
+    withUiKit: SCAN_HAPTIC.useImpactLightProj >= 0.5,
+  });
+}
+
+/** 镜子投影换格 */
+export function playMirrorProjPattern(): void {
+  playHit({
+    intensity: SCAN_HAPTIC.mirrorProjIntensity,
+    sharpness: SCAN_HAPTIC.mirrorProjSharpness,
+    withUiKit: SCAN_HAPTIC.useImpactMirrorProj >= 0.5,
+  });
+}
+
+/** 点击旋转成功 */
+export function playRotatePattern(): void {
+  playHit({
+    intensity: SCAN_HAPTIC.rotateIntensity,
+    sharpness: SCAN_HAPTIC.rotateSharpness,
+    withUiKit: SCAN_HAPTIC.useImpactRotate >= 0.5,
+  });
+}
+
 /**
  * 出场三连。返回 timeout id，便于会话 end 时 cancel。
  * onComplete：#3 触发后调用（底噪恢复等）。

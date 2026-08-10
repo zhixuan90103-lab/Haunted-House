@@ -38,6 +38,20 @@ export type ScanHapticConfig = {
   ghostPassSharpness: number;
   ghostPassCooldownMs: number;
 
+  // —— 手电投影换格（拖灯吸附格变化）——
+  lightProjIntensity: number;
+  lightProjSharpness: number;
+  lightProjCooldownMs: number;
+
+  // —— 镜子投影换格 ——
+  mirrorProjIntensity: number;
+  mirrorProjSharpness: number;
+  mirrorProjCooldownMs: number;
+
+  // —— 点击旋转 ——
+  rotateIntensity: number;
+  rotateSharpness: number;
+
   // —— 引擎 ——
   updateIntervalMs: number;
   continuousDurationS: number;
@@ -48,6 +62,9 @@ export type ScanHapticConfig = {
   useImpactOpen: number;
   useImpactReveal: number;
   useImpactGhostPass: number;
+  useImpactLightProj: number;
+  useImpactMirrorProj: number;
+  useImpactRotate: number;
 };
 
 /** 定稿默认（真机调参回写） */
@@ -58,25 +75,37 @@ export const SCAN_HAPTIC: ScanHapticConfig = {
 
   reveal1Intensity: 0.53,
   reveal1Sharpness: 0.46,
-  reveal1to2Ms: 40,
-  reveal2Intensity: 0.4,
+  reveal1to2Ms: 50,
+  reveal2Intensity: 0.17,
   reveal2Sharpness: 0.29,
   reveal2to3Ms: 40,
-  reveal3Intensity: 0.33,
-  reveal3Sharpness: 0.62,
+  reveal3Intensity: 0.2,
+  reveal3Sharpness: 0.47,
 
-  floorIntensity: 0.15,
-  floorSharpness: 0.01,
+  floorIntensity: 0.12,
+  floorSharpness: 0.44,
   peakIntensity: 0.2,
   peakSharpness: 0.1,
   nearRadius: 3,
 
   chargePeakIntensity: 0.35,
-  chargePeakSharpness: 0.15,
+  chargePeakSharpness: 0.58,
 
-  ghostPassIntensity: 0.51,
-  ghostPassSharpness: 0.18,
+  ghostPassIntensity: 0.39,
+  ghostPassSharpness: 0.26,
   ghostPassCooldownMs: 180,
+
+  // 仅「可落格」投影吸附时用；扫描光斑换格不震
+  lightProjIntensity: 0.35,
+  lightProjSharpness: 0.6,
+  lightProjCooldownMs: 50,
+
+  mirrorProjIntensity: 0.35,
+  mirrorProjSharpness: 0.61,
+  mirrorProjCooldownMs: 50,
+
+  rotateIntensity: 0.53,
+  rotateSharpness: 0.55,
 
   updateIntervalMs: 50,
   continuousDurationS: 30,
@@ -86,6 +115,9 @@ export const SCAN_HAPTIC: ScanHapticConfig = {
   useImpactOpen: 1,
   useImpactReveal: 1,
   useImpactGhostPass: 0,
+  useImpactLightProj: 0,
+  useImpactMirrorProj: 0,
+  useImpactRotate: 0,
 };
 
 export const DEFAULT_SCAN_HAPTIC: ScanHapticConfig = { ...SCAN_HAPTIC };
@@ -101,6 +133,8 @@ export function setScanHaptic(partial: Partial<ScanHapticConfig>): void {
     'reveal1to2Ms',
     'reveal2to3Ms',
     'ghostPassCooldownMs',
+    'lightProjCooldownMs',
+    'mirrorProjCooldownMs',
     'updateIntervalMs',
     'renewBeforeMs',
     'pulseFallbackMs',
@@ -125,6 +159,11 @@ export function scanHapticSnapshot(): string {
     `  chargePeakIntensity: ${h.chargePeakIntensity}, chargePeakSharpness: ${h.chargePeakSharpness},`,
     `  ghostPassIntensity: ${h.ghostPassIntensity}, ghostPassSharpness: ${h.ghostPassSharpness},`,
     `  ghostPassCooldownMs: ${h.ghostPassCooldownMs},`,
+    `  lightProjIntensity: ${h.lightProjIntensity}, lightProjSharpness: ${h.lightProjSharpness},`,
+    `  lightProjCooldownMs: ${h.lightProjCooldownMs},`,
+    `  mirrorProjIntensity: ${h.mirrorProjIntensity}, mirrorProjSharpness: ${h.mirrorProjSharpness},`,
+    `  mirrorProjCooldownMs: ${h.mirrorProjCooldownMs},`,
+    `  rotateIntensity: ${h.rotateIntensity}, rotateSharpness: ${h.rotateSharpness},`,
     `  reveal1Intensity: ${h.reveal1Intensity}, reveal1Sharpness: ${h.reveal1Sharpness},`,
     `  reveal1to2Ms: ${h.reveal1to2Ms},`,
     `  reveal2Intensity: ${h.reveal2Intensity}, reveal2Sharpness: ${h.reveal2Sharpness},`,
@@ -133,5 +172,6 @@ export function scanHapticSnapshot(): string {
     `  updateIntervalMs: ${h.updateIntervalMs},`,
     `  continuousDurationS: ${h.continuousDurationS},`,
     `  useImpactOpen: ${h.useImpactOpen}, useImpactReveal: ${h.useImpactReveal}, useImpactGhostPass: ${h.useImpactGhostPass},`,
+    `  useImpactLightProj: ${h.useImpactLightProj}, useImpactMirrorProj: ${h.useImpactMirrorProj}, useImpactRotate: ${h.useImpactRotate},`,
   ].join('\n');
 }

@@ -11,6 +11,7 @@ import {
   type Board,
 } from './board';
 import { createScanHaptics } from './feel/scan-haptics';
+import { createPlacementHaptics } from './feel/placement-haptics';
 import {
   allGhostsFound,
   allRevealed,
@@ -63,12 +64,10 @@ import {
   type LightFxHandle,
   type PlacedLightFx,
 } from './view/lightFx';
-import { mountHapticTuner } from './view/hapticTuner';
-import { mountPropTuner } from './view/propTuner';
 import { captureBoardDataUrl } from './view/captureBoard';
 import { mountCameraSession } from './view/cameraSession';
-import { mountIslandTuner } from './view/islandTuner';
 import { applyPrintLayoutCss } from './printLayout';
+import { mountHapticTuner } from './view/hapticTuner';
 
 export type MountGameOptions = {
   stage: HTMLElement;
@@ -363,11 +362,15 @@ function paint(
     placedLights: collectPlacedLightFx(rt.board, hidePropId),
     previewLight: rt.previewLight,
   });
-  if (rt.def.title) els.titleEl.textContent = rt.def.title;
-  // 提示：找全鬼后提示可用镜
+  // 关卡标题不展示（如「绕心三折」）
+  els.titleEl.textContent = '';
+  els.titleEl.hidden = true;
+  // 扫鬼 / 布光阶段提示
   if (rt.trayUnlocked) {
     els.hintEl.textContent =
       '摆镜折光 · 点旋改朝向 · 全员同时显示后自动拍照';
+  } else {
+    els.hintEl.textContent = '拿起手电找到全部点鬼魂。';
   }
 }
 
@@ -381,6 +384,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   const lightFx = mountLightFx(uiRoot);
   const ghostIdle = startGhostIdleLoop(uiRoot);
   const scanHaptics = createScanHaptics();
+  const placementHaptics = createPlacementHaptics();
   const camera = mountCameraSession(uiRoot);
   applyPrintLayoutCss(uiRoot);
 
@@ -486,24 +490,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     else stopDwellLoop();
   };
 
-  const tuner = mountPropTuner(uiRoot, {
-    onChange: () => {
-      applyPropStyleCss(uiRoot);
-      applyViewStyleCss(uiRoot);
-      applyLayoutToDom(els);
-      lightFx.layout();
-      repaint();
-    },
-  });
+  // 结算调参已隐藏；仅挂载震动调参
   const hapticTuner = mountHapticTuner(uiRoot);
-  const islandTuner = mountIslandTuner(uiRoot, {
-    onChange: () => {
-      applyPrintLayoutCss(uiRoot);
-    },
-    onPreview: (on) => {
-      camera.setIslandPreview(on);
-    },
-  });
 
   resolve(rt, scanHaptics);
   repaint();
@@ -527,6 +515,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     resetTrayScroll();
     stopDwellLoop();
     scanHaptics.end();
+    placementHaptics.end();
     applyPhaseUi();
     resolve(rt, scanHaptics);
     repaint();
@@ -547,9 +536,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.phase = SessionPhase.Capturing;
     applyPhaseUi();
     try {
-      // 先截（含全亮棋盘），再播闪白/吐纸
-      const dataUrl = await captureBoardDataUrl(uiRoot);
-      await camera.playCapture(dataUrl);
+      // playCapture 内部：立刻蒙黑/闪白 → 再截屏 → 吐纸（避免手机长时间无反馈）
+      await camera.playCapture(() => captureBoardDataUrl(uiRoot));
       rt.ghosts = markAllCaught(rt.ghosts);
       rt.phase = SessionPhase.Won;
       applyPhaseUi();
@@ -588,6 +576,9 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       // 清空 drag 时由 onDrop/onCancel 显式 end；此处勿对 null 重复 end
       // （endPointer 总会 setDrag(null)，避免与 drop 竞态掐断刚启动的 continuous）
       if (d != null && d.type !== 'light') scanHaptics.end();
+      if (d == null || (d.type !== 'light' && d.type !== 'mirror')) {
+        placementHaptics.end();
+      }
     },
     getLayout,
     getStage: () => stage,
@@ -599,6 +590,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     },
     onDragMove: () => {
       if (rt.phase !== SessionPhase.Playing) return;
+      placementHaptics.onDragFrame(rt.drag);
       resolve(rt, scanHaptics);
       repaint();
       afterResolve();
@@ -611,6 +603,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
         if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
         rt.drag = null;
         scanHaptics.end();
+        placementHaptics.end();
         resolve(rt, scanHaptics);
         repaint();
         afterResolve();
@@ -629,6 +622,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       }
       rt.drag = null;
       scanHaptics.end();
+      placementHaptics.end();
       resolve(rt, scanHaptics);
       repaint();
       afterResolve();
@@ -637,6 +631,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
       rt.drag = null;
       scanHaptics.end();
+      placementHaptics.end();
       resolve(rt, scanHaptics);
       repaint();
       afterResolve();
@@ -644,6 +639,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     onRotate: (x, y) => {
       if (rt.phase !== SessionPhase.Playing) return;
       if (rotatePropAt(rt.board, x, y)) {
+        placementHaptics.onRotate();
         resolve(rt, scanHaptics);
         repaint();
         afterResolve();
@@ -660,12 +656,11 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     dispose: () => {
       stopDwellLoop();
       scanHaptics.end();
+      placementHaptics.end();
       detach();
       camera.dispose();
       ghostIdle.stop();
-      tuner.dispose();
       hapticTuner.dispose();
-      islandTuner.dispose();
       lightFx.dispose();
       uiRoot.replaceChildren();
       uiRoot.classList.remove('game-ui', 'session-locked');

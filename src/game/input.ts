@@ -340,7 +340,13 @@ export function attachInput(
       session.cell = cellSize();
       samplePointer(session, d.x, d.y);
       chaseTargetOnPointer(session);
-      syncGhostFromSession(activeDrag, session, cb.getBoard());
+      // 必须带 canCommitDrop：扫描期手电禁止落格 → cell=null，否则会误触投影换格震动
+      syncGhostFromSession(
+        activeDrag,
+        session,
+        cb.getBoard(),
+        cb.canCommitDrop,
+      );
       cb.setDrag({ ...activeDrag });
       cb.onDragMove();
     }
@@ -406,7 +412,7 @@ export function attachInput(
     const t = e.target instanceof Element ? e.target : null;
     if (
       t?.closest?.(
-        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #island-tuner, #island-tuner-fab, #btn-restart, .game-restart-btn, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab, .island-tuner, .island-tuner-fab, .camera-session, .camera-btn, .won-replay-btn',
+        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #island-tuner, #island-tuner-fab, #settle-tuner, #settle-tuner-fab, #btn-restart, .game-restart-btn, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab, .island-tuner, .island-tuner-fab, .settle-tuner, .settle-tuner-fab, .camera-session, .camera-btn, .won-replay-btn',
       )
     )
       return;

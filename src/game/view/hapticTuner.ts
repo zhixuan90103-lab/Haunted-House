@@ -14,8 +14,11 @@ import {
 } from '../feel/haptic-config';
 import {
   playGhostPassPattern,
+  playLightProjPattern,
+  playMirrorProjPattern,
   playOpenPattern,
   playRevealPatternAsync,
+  playRotatePattern,
   startLeveledContinuous,
 } from '../feel/haptic-patterns';
 
@@ -53,6 +56,20 @@ const SLIDERS: SliderDef[] = [
   { section: '③ 过鬼格', key: 'ghostPassCooldownMs', label: '过鬼冷却 ms', min: 50, max: 600, step: 10 },
   { section: '③ 过鬼格', key: 'useImpactGhostPass', label: '过鬼 UIKit', min: 0, max: 1, step: 1 },
 
+  { section: '③b 手电投影换格', key: 'lightProjIntensity', label: 'intensity', min: 0, max: 1, step: 0.01 },
+  { section: '③b 手电投影换格', key: 'lightProjSharpness', label: 'sharpness', min: 0, max: 1, step: 0.01 },
+  { section: '③b 手电投影换格', key: 'lightProjCooldownMs', label: '冷却 ms', min: 40, max: 400, step: 5 },
+  { section: '③b 手电投影换格', key: 'useImpactLightProj', label: 'UIKit', min: 0, max: 1, step: 1 },
+
+  { section: '③c 镜子投影换格', key: 'mirrorProjIntensity', label: 'intensity', min: 0, max: 1, step: 0.01 },
+  { section: '③c 镜子投影换格', key: 'mirrorProjSharpness', label: 'sharpness', min: 0, max: 1, step: 0.01 },
+  { section: '③c 镜子投影换格', key: 'mirrorProjCooldownMs', label: '冷却 ms', min: 40, max: 400, step: 5 },
+  { section: '③c 镜子投影换格', key: 'useImpactMirrorProj', label: 'UIKit', min: 0, max: 1, step: 1 },
+
+  { section: '③d 点旋', key: 'rotateIntensity', label: 'intensity', min: 0, max: 1, step: 0.01 },
+  { section: '③d 点旋', key: 'rotateSharpness', label: 'sharpness', min: 0, max: 1, step: 0.01 },
+  { section: '③d 点旋', key: 'useImpactRotate', label: 'UIKit', min: 0, max: 1, step: 1 },
+
   { section: '④ 出场三连 #1', key: 'reveal1Intensity', label: '#1 intensity', min: 0, max: 1, step: 0.01 },
   { section: '④ 出场三连 #1', key: 'reveal1Sharpness', label: '#1 sharpness', min: 0, max: 1, step: 0.01 },
   { section: '④ 出场三连 #1', key: 'reveal1to2Ms', label: '#1→#2 间隔 ms', min: 0, max: 300, step: 5 },
@@ -72,7 +89,10 @@ function formatVal(key: keyof ScanHapticConfig, n: number): string {
   if (
     key === 'useImpactOpen' ||
     key === 'useImpactReveal' ||
-    key === 'useImpactGhostPass'
+    key === 'useImpactGhostPass' ||
+    key === 'useImpactLightProj' ||
+    key === 'useImpactMirrorProj' ||
+    key === 'useImpactRotate'
   ) {
     return n >= 0.5 ? '开' : '关';
   }
@@ -83,6 +103,8 @@ function formatVal(key: keyof ScanHapticConfig, n: number): string {
     key === 'renewBeforeMs' ||
     key === 'nearRadius' ||
     key === 'ghostPassCooldownMs' ||
+    key === 'lightProjCooldownMs' ||
+    key === 'mirrorProjCooldownMs' ||
     key === 'reveal1to2Ms' ||
     key === 'reveal2to3Ms' ||
     key === 'continuousDurationS'
@@ -216,6 +238,21 @@ export function mountHapticTuner(parent: HTMLElement): HapticTunerHandle {
   mkTest('过鬼格', async () => {
     playGhostPassPattern();
     setStatus(`过鬼 i=${SCAN_HAPTIC.ghostPassIntensity.toFixed(2)}`);
+  });
+
+  mkTest('手电投影', async () => {
+    playLightProjPattern();
+    setStatus(`手电投影 i=${SCAN_HAPTIC.lightProjIntensity.toFixed(2)}`);
+  });
+
+  mkTest('镜子投影', async () => {
+    playMirrorProjPattern();
+    setStatus(`镜子投影 i=${SCAN_HAPTIC.mirrorProjIntensity.toFixed(2)}`);
+  });
+
+  mkTest('点旋', async () => {
+    playRotatePattern();
+    setStatus(`点旋 i=${SCAN_HAPTIC.rotateIntensity.toFixed(2)}`);
   });
 
   mkTest('出场三连', async () => {

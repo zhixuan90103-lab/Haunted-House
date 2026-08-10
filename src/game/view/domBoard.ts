@@ -141,11 +141,11 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   hud.className = 'game-hud';
   const titleEl = document.createElement('h1');
   titleEl.className = 'game-title';
-  titleEl.textContent = 'Haunted House';
+  titleEl.hidden = true;
+  titleEl.textContent = '';
   const hintEl = document.createElement('p');
   hintEl.className = 'game-hint';
-  hintEl.textContent =
-    '拖出手电找鬼 · 全部找到后镜子滑入 · 再放灯折光';
+  hintEl.textContent = '拿起手电找到全部点鬼魂。';
   const restartBtn = document.createElement('button');
   restartBtn.type = 'button';
   restartBtn.id = 'btn-restart';
