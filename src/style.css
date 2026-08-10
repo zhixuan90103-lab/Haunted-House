@@ -1099,8 +1099,10 @@ button:active {
   visibility: hidden;
 }
 
+/* is-printing 必须可见：吐纸时会去掉 is-capturing，只剩 is-printing */
 .camera-session.is-camera,
 .camera-session.is-capturing,
+.camera-session.is-printing,
 .camera-session.is-won {
   pointer-events: auto;
   opacity: 1;
@@ -1108,7 +1110,7 @@ button:active {
 }
 
 /* 调参预览岛：显示会话层，但不挡玩法点击 */
-.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-won) {
+.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-printing):not(.is-won) {
   opacity: 1;
   visibility: visible;
   pointer-events: none;
@@ -1413,9 +1415,12 @@ button:active {
 }
 
 /* 预览时只露出岛，其它拍照铬/按钮隐藏 */
-.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-won) .camera-chrome,
-.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-won) .camera-controls,
-.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-won) .camera-flash {
+.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-printing):not(.is-won)
+  .camera-chrome,
+.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-printing):not(.is-won)
+  .camera-controls,
+.camera-session.is-island-preview:not(.is-camera):not(.is-capturing):not(.is-printing):not(.is-won)
+  .camera-flash {
   display: none;
 }
 
@@ -1574,7 +1579,8 @@ button:active {
 
 .polaroid-fly.is-fly-final {
   opacity: 1;
-  will-change: transform, left, top;
+  /* 飞终点只动 transform，勿 will-change left/top */
+  will-change: transform;
 }
 
 .polaroid-photo {

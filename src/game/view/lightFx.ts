@@ -69,6 +69,11 @@ export type LightFxPaintInput = {
    * 可放格预览：拖灯且合法吸附时，按该格+朝向画完整折线光（动态长度/光斑）
    */
   previewLight: PlacedLightFx | null;
+  /**
+   * 扫鬼蓄光凝实：覆盖跟手 beam/glow 透明度（省略则用 VIEW_STYLE 默认）
+   */
+  freeGlowAlpha?: number;
+  freeBeamAlpha?: number;
 };
 
 export type LightFxHandle = {
@@ -286,6 +291,7 @@ function paintBeam(
   cell: number,
   openT: number,
   lengthPx?: number,
+  alphaOverride?: number,
 ): void {
   if (!beamImg.complete || beamImg.naturalWidth <= 0) return;
   const t = Math.max(0, Math.min(1, openT));
@@ -312,7 +318,7 @@ function paintBeam(
     facingDrawAngleRad(facing),
     thickness,
     length,
-    beamAlpha,
+    alphaOverride ?? beamAlpha,
   );
 }
 
@@ -376,6 +382,7 @@ function paintGlow(
   freeGlows: FreeGlow[],
   cell: number,
   openT: number,
+  alphaOverride?: number,
 ): void {
   if (!glowImg.complete || glowImg.naturalWidth <= 0) return;
   if (freeGlows.length === 0) return;
@@ -384,7 +391,10 @@ function paintGlow(
 
   const base = cell * Math.max(0.4, VIEW_STYLE.glowSize / 100);
   const glowPx = base * t;
-  const alpha = Math.max(0, Math.min(1, VIEW_STYLE.glowAlpha));
+  const alpha = Math.max(
+    0,
+    Math.min(1, alphaOverride ?? VIEW_STYLE.glowAlpha),
+  );
 
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = alpha;
@@ -554,7 +564,14 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
   };
 
   const paint = (input: LightFxPaintInput) => {
-    const { drag, freeGlows, placedLights, previewLight } = input;
+    const {
+      drag,
+      freeGlows,
+      placedLights,
+      previewLight,
+      freeGlowAlpha,
+      freeBeamAlpha,
+    } = input;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const pw = Math.round(DESIGN_W * dpr);
     const ph = Math.round(DESIGN_H * dpr);
@@ -601,8 +618,9 @@ export function mountLightFx(uiRoot: HTMLElement): LightFxHandle {
         cell,
         openT,
         beamLen,
+        freeBeamAlpha,
       );
-      paintGlow(ctx, freeGlows, cell, openT);
+      paintGlow(ctx, freeGlows, cell, openT, freeGlowAlpha);
     }
     // previewLight 仅逻辑/落盘用，拖灯绘制不读（A1）
     void previewLight;

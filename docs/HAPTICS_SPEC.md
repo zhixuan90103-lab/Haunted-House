@@ -2,13 +2,13 @@
 
 | | |
 |--|--|
-| 版本 | **v1.2** |
+| 版本 | **v1.3** |
 | 状态 | 设计冻结（玩法语义）；定稿参数见 §6 |
-| 范围 | 握着手电扫描会话 |
-| 实现 | `src/game/feel/haptic-*` · `src/utils/haptics.ts` · `plugins/native-haptics` |
+| 范围 | 扫描会话 + **放置瞬态**（镜/灯投影换格、点旋） |
+| 实现 | `src/game/feel/haptic-*` · `placement-haptics.ts` · `utils/haptics.ts` · `plugins/native-haptics` |
 | 调参 | 左下 📳 · 参数真源 `haptic-config.ts` |
 
-> 玩法规则仍认 `PRODUCT.md`；本文只定 **扫描震动语义与分层**。  
+> 玩法规则仍认 `PRODUCT.md`；本文定 **震动语义与分层**。  
 > 工程注册坑见 `ENGINEERING.md` § Haptics。
 
 ---
@@ -91,6 +91,21 @@ level = peak + (chargePeak - peak) × progress   // 线性
 - 一次轻 transient：`ghostPass*`
 - `ghostPassCooldownMs` 防抖
 - **已发现** 鬼格路过 **不触发**
+- **扫描阶段光斑在普通格之间切换：不震**（不做 lightProj）
+
+### 3.4b 放置瞬态（非扫描 continuous）
+
+与扫描会话解耦；`placement-haptics.ts`。
+
+| 事件 | 触发 | 参数前缀 |
+|------|------|----------|
+| 手电投影换格 | 找全鬼后 light **可吸附** 时 `drag.cell` 变化 | `lightProj*` |
+| 镜子投影换格 | 拖 mirror 时 `drag.cell` 变化 | `mirrorProj*` |
+| 点旋 | `rotatePropAt` 成功 | `rotate*` |
+
+- 各有 cooldown（投影换格）；点旋无 cooldown。  
+- **扫描期** light 的 `canCommitDrop=false` → `cell=null` → **不触发** lightProj。  
+- 实现坑：pointermove 必须带 `canCommitDrop`，否则误吸附误震。
 
 ### 3.5 出场三连（Reveal）
 
@@ -114,21 +129,22 @@ t = +reveal2to3Ms  → hit #3 (reveal3*)  （相对 #2 的间隔）
 ```
 玩法 resolve（拖 light）
   → scanHaptics.onScanFrame / end
-       → haptic-math     纯距离/插值
-       → haptic-patterns 开灯/过格/出场播放
-       → haptic-config   参数
-       → utils/haptics   Capacitor 桥
-            → AdvancedHaptics (Swift)
+       → haptic-math / patterns / config → utils/haptics → Swift
+
+拖 mirror / 可落格 light / 点旋
+  → placementHaptics.onDragFrame / onRotate
+       → playLightProj / playMirrorProj / playRotate
 ```
 
 | 模块 | 职责 |
 |------|------|
 | `haptic-config.ts` | 参数表、默认值、复制快照 |
-| `haptic-math.ts` | 未发现鬼过滤、曼哈顿、线性强度 |
-| `haptic-patterns.ts` | open / pass / reveal 播放（无会话状态） |
+| `haptic-math.ts` | 未发现鬼过滤、曼哈顿、线性强度、蓄光线性 |
+| `haptic-patterns.ts` | open / pass / reveal / 投影 / 点旋 播放 |
 | `scan-haptics.ts` | 扫描会话状态机 |
-| `hapticTuner.ts` | 调试 UI |
-| `utils/haptics.ts` | 原生桥；失败静默 |
+| `placement-haptics.ts` | 投影换格 · 点旋 |
+| `hapticTuner.ts` | 调试 UI + 试振 |
+| `utils/haptics.ts` | 原生桥；Web continuous 失败则 pulse fallback |
 | `plugins/native-haptics` | UIKit + Core Haptics 真源 |
 
 ---
@@ -147,30 +163,34 @@ t = +reveal2to3Ms  → hit #3 (reveal3*)  （相对 #2 的间隔）
 文件：`src/game/feel/haptic-config.ts`（`SCAN_HAPTIC` / `DEFAULT_SCAN_HAPTIC`）。  
 调参 📳「复制参数」→ 回写该文件。
 
-| 参数 | 定稿默认 |
+| 参数 | 定稿默认（2026-08-10） |
 |------|----------|
 | openIntensity / openSharpness | 0.6 / 0.8 |
 | openToContinuousMs | 65 |
-| floorIntensity / floorSharpness | 0.15 / 0.01 |
+| floorIntensity / floorSharpness | **0.12 / 0.44** |
 | peakIntensity / peakSharpness | 0.2 / 0.1 |
 | nearRadius（曼哈顿格） | 3 |
-| chargePeakIntensity / Sharpness | 0.35 / 0.15 |
-| ghostPassIntensity / Sharpness | 0.51 / 0.18 |
+| chargePeakIntensity / Sharpness | **0.35 / 0.58**（相对 peak **线性**爬升，与 dwell 1s 同步） |
+| ghostPassIntensity / Sharpness | 0.39 / 0.26 |
 | ghostPassCooldownMs | 180 |
-| reveal1 | 0.53 / 0.46 |
-| reveal1to2Ms | 40 |
-| reveal2 | 0.4 / 0.29 |
-| reveal2to3Ms | 40 |
-| reveal3 | 0.33 / 0.62 |
+| lightProjIntensity / Sharpness / CooldownMs | 0.35 / 0.6 / 50 |
+| mirrorProjIntensity / Sharpness / CooldownMs | 0.35 / 0.61 / 50 |
+| rotateIntensity / Sharpness | 0.53 / 0.55 |
+| reveal1 | 0.53 / 0.46 · reveal1to2Ms **50** |
+| reveal2 | **0.17 / 0.29** · reveal2to3Ms 40 |
+| reveal3 | **0.2 / 0.47** |
 | useImpactOpen / Reveal / GhostPass | 1 / 1 / 0 |
+| useImpactLightProj / MirrorProj / Rotate | 0 / 0 / 0 |
+
+蓄光：`intensity = peak + (chargePeak - peak) × progress`，`progress = (now - litSince) / GHOST_REVEAL_DWELL_MS`。
 
 ---
 
 ## 7. 刻意不做
 
-- 放置灯照鬼持续震
-- 已发现鬼的近距/过格反馈
-- 光斑每换格默认 impact
+- 放置灯照鬼持续震  
+- 已发现鬼的近距/过格反馈  
+- **扫描期**光斑每换格 impact / lightProj  
 - 出场三连每下都叠 UIKit（默认仅 #1）
 
 ---
@@ -179,8 +199,8 @@ t = +reveal2to3Ms  → hit #3 (reveal3*)  （相对 #2 的间隔）
 
 | UI | 说明 |
 |----|------|
-| 左下 📳 | 震动调参 / 试振 / 诊断 |
-| HUD「重制」 | 关卡重载 + `scanHaptics.end()`（非震动设计本身，但结束会话） |
+| 左下 📳 | 震动调参 / 试振（含投影·点旋）/ 诊断 |
+| HUD「重制」 | 关卡重载 + `scanHaptics.end()` + `placementHaptics.end()` |
 
 ---
 
@@ -191,3 +211,4 @@ t = +reveal2to3Ms  → hit #3 (reveal3*)  （相对 #2 的间隔）
 | v1.0 | 会话模型、线性近鬼、过格边沿、出场三连、分层模块 |
 | v1.1 | 写入定稿默认参数表；索引重制结束会话 |
 | v1.2 | 蓄光 chargePeak；出场 mute continuous 再恢复；参数同步 haptic-config |
+| **v1.3** | 放置瞬态（镜/灯投影、点旋）；扫描禁换格震；定稿参数表更新；placement-haptics |

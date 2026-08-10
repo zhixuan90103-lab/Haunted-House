@@ -403,10 +403,11 @@ export function mountCameraSession(uiRoot: HTMLElement): CameraSessionHandle {
 
     if (phase === 'won') {
       // 与打印同一界面：保留 print-layer + 蒙黑 + 终点相纸，只出结算 UI
+      // 若 playCapture 已飞到终点并写好 inline，pin 仅对齐数值，避免二次动画
       root.classList.add('is-printing', 'is-won');
+      applyPrintLayoutCss(uiRoot);
       pinPolaroidAtFinal();
       showSettleUi();
-      applyPrintLayoutCss(uiRoot);
       return;
     }
 
@@ -421,8 +422,10 @@ export function mountCameraSession(uiRoot: HTMLElement): CameraSessionHandle {
   };
 
   /**
-   * 阶段2：FLIP 接住阶段1 画面中心，全程 transform-origin: 50% 50%，
-   * 避免终点时 origin 从顶心切到中心造成跳变。
+   * 阶段2：FLIP 飞终点。
+   * - left/top 钉在终点，只动画 transform（避免 left/top 与 transform 双通道插值抖动）
+   * - origin 固定 50% 50%，接住阶段1 视觉中心
+   * - 结束先写死 style 再 cancel，避免 fill:forwards + cancel 末帧回弹
    */
   const flyPolaroidToFinal = async (): Promise<void> => {
     applyPrintLayoutCss(uiRoot);
@@ -432,49 +435,46 @@ export function mountCameraSession(uiRoot: HTMLElement): CameraSessionHandle {
     const finalTop = g.finalTop;
     const rot = PRINT_LAYOUT.finalRotateDeg;
 
-    // 阶段1 结束时的视觉中心（设计坐标）
+    // 仍在阶段1 终态时量视觉中心（design）；取整减少亚像素抖动
     const first = polaroid.getBoundingClientRect();
     const uiRect = uiRoot.getBoundingClientRect();
     const k = uiRect.width / 390 || 1;
-    const startCX = (first.left + first.width / 2 - uiRect.left) / k;
-    const startCY = (first.top + first.height / 2 - uiRect.top) / k;
+    const startCX =
+      Math.round(((first.left + first.width / 2 - uiRect.left) / k) * 2) / 2;
+    const startCY =
+      Math.round(((first.top + first.height / 2 - uiRect.top) / k) * 2) / 2;
+    const dx = startCX - finalCX;
+    const dy = startCY - finalTop;
 
+    const startTransform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${s}) rotate(0deg)`;
+    const endTransform = `translate(-50%, -50%) scale(1) rotate(${rot}deg)`;
+
+    // 先钉终点 left/top + 起点 transform，再拆 CSS 动画，减少一帧回弹
     cancelPolaroidAnimations();
     polaroid.classList.remove('is-slide-out', 'is-fly-final');
     polaroid.style.animation = 'none';
-
-    // 挂出 Mask；中心定位，origin 固定中心
-    printLayer.insertBefore(polaroid, islandTop);
-    polaroid.style.left = `${startCX}px`;
-    polaroid.style.top = `${startCY}px`;
+    if (polaroid.parentElement !== printLayer) {
+      printLayer.insertBefore(polaroid, settleUi);
+    }
+    polaroid.style.left = `${finalCX}px`;
+    polaroid.style.top = `${finalTop}px`;
     polaroid.style.width = `${PRINT_LAYOUT.polaroidMaxWidth}px`;
     polaroid.style.transformOrigin = '50% 50%';
-    polaroid.style.transform = `translate(-50%, -50%) scale(${s}) rotate(0deg)`;
+    polaroid.style.transform = startTransform;
     polaroid.style.opacity = '1';
     polaroid.style.zIndex = '5';
-    polaroid.style.willChange = 'transform, left, top';
+    polaroid.style.willChange = 'transform';
 
     await new Promise<void>((r) => {
       requestAnimationFrame(() => requestAnimationFrame(() => r()));
     });
 
-    const endTransform = `translate(-50%, -50%) scale(1) rotate(${rot}deg)`;
     const anim = polaroid.animate(
-      [
-        {
-          left: `${startCX}px`,
-          top: `${startCY}px`,
-          transform: `translate(-50%, -50%) scale(${s}) rotate(0deg)`,
-        },
-        {
-          left: `${finalCX}px`,
-          top: `${finalTop}px`,
-          transform: endTransform,
-        },
-      ],
+      [{ transform: startTransform }, { transform: endTransform }],
       {
         duration: PRINT_LAYOUT.flyMs,
-        easing: 'cubic-bezier(0.22, 0.82, 0.28, 1)',
+        // 平滑 ease-out，避免旧曲线末端回弹感
+        easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
         fill: 'forwards',
       },
     );
@@ -484,24 +484,20 @@ export function mountCameraSession(uiRoot: HTMLElement): CameraSessionHandle {
       /* aborted */
     }
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (anim as any).commitStyles?.();
-    } catch {
-      /* */
-    }
+    // 先固化终点再 cancel（勿依赖 commitStyles，部分 WebKit 仍会抖）
+    polaroid.style.left = `${finalCX}px`;
+    polaroid.style.top = `${finalTop}px`;
+    polaroid.style.width = `${PRINT_LAYOUT.polaroidMaxWidth}px`;
+    polaroid.style.transformOrigin = '50% 50%';
+    polaroid.style.transform = endTransform;
+    polaroid.style.opacity = '1';
+    polaroid.style.zIndex = '5';
+    polaroid.style.willChange = '';
     try {
       anim.cancel();
     } catch {
       /* */
     }
-
-    polaroid.style.left = `${finalCX}px`;
-    polaroid.style.top = `${finalTop}px`;
-    polaroid.style.transform = endTransform;
-    polaroid.style.transformOrigin = '50% 50%';
-    polaroid.style.willChange = '';
-    polaroid.style.zIndex = '5';
   };
 
   const playCapture = async (capture: () => Promise<string>) => {

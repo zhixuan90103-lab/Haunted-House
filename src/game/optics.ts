@@ -57,8 +57,54 @@ export const MIRROR_REFLECT: Record<DirValue, Partial<Record<Dir, Dir>>> = {
   3: { [Dir.W]: Dir.S, [Dir.N]: Dir.E },
 };
 
+/**
+ * 每个 facing 下两个正面（进光/出光）朝向的外侧法向。
+ * facing0：正面 3S + 4W → 朝南、朝西的邻格须在盘内。
+ */
+export const MIRROR_FRONT_OUT: Record<DirValue, readonly [Dir, Dir]> = {
+  0: [Dir.S, Dir.W],
+  1: [Dir.W, Dir.N],
+  2: [Dir.N, Dir.E],
+  3: [Dir.E, Dir.S],
+};
+
 function inBounds(x: number, y: number, w: number, h: number): boolean {
   return x >= 0 && y >= 0 && x < w && y < h;
+}
+
+/** 拖镜投影：两正面外侧邻格都在棋盘内 */
+export function isMirrorFacingInBoard(
+  x: number,
+  y: number,
+  facing: DirValue,
+  width: number,
+  height: number,
+): boolean {
+  for (const d of MIRROR_FRONT_OUT[facing]) {
+    const nx = x + DELTA[d].dx;
+    const ny = y + DELTA[d].dy;
+    if (!inBounds(nx, ny, width, height)) return false;
+  }
+  return true;
+}
+
+/**
+ * 拖动未松手：为投影格选合法 facing。
+ * 优先保持 preferred，否则顺时针试 1～3 档；皆不合法则退回 preferred。
+ * 点旋不走此函数。
+ */
+export function pickMirrorFacingForCell(
+  x: number,
+  y: number,
+  preferred: DirValue,
+  width: number,
+  height: number,
+): DirValue {
+  for (let i = 0; i < 4; i++) {
+    const f = ((preferred + i) % 4) as DirValue;
+    if (isMirrorFacingInBoard(x, y, f, width, height)) return f;
+  }
+  return preferred;
 }
 
 /** 正面 → 出射方向；背面 → block */

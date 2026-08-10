@@ -46,6 +46,22 @@ export type ViewStyle = {
   beamPlacedLengthScale: number;
   beamAlpha: number;
   /**
+   * 扫鬼蓄光凝实：光斑在**未发现**鬼格上停留后，
+   * 跟手 beam/glow 从默认 alpha **线性**爬到 charge 峰值；
+   * 离格 / 出场后 **平滑回落**到默认（非瞬间）。
+   *
+   * - chargeSolidDelayMs：开始爬升前的延迟
+   * - chargeSolidRampMs：默认 → 峰值的爬升时长
+   * - chargeSolidReleaseMs：离格后峰值 → 默认的回落时长
+   */
+  chargeSolidDelayMs: number;
+  chargeSolidRampMs: number;
+  chargeSolidReleaseMs: number;
+  /** 蓄光凝实满值 · 光斑 alpha（默认应 > glowAlpha） */
+  glowChargeAlpha: number;
+  /** 蓄光凝实满值 · 连接 alpha（默认应 > beamAlpha） */
+  beamChargeAlpha: number;
+  /**
    * 鬼（格内显示）
    * ghostSize：相对格子 %
    * ghostOffsetX / Y：格内偏移 px
@@ -98,6 +114,13 @@ export const VIEW_STYLE: ViewStyle = {
   beamPlacedOffsetY: -30, // 放下连接锚点
   beamPlacedLengthScale: 130, // 放下长度：路径距离 × %
   beamAlpha: 0.64,
+  /** 先正常扫 0.3s，再在约 0.7s 内线性爬到峰值（对齐 dwell 1s） */
+  chargeSolidDelayMs: 300,
+  chargeSolidRampMs: 700,
+  /** 拖离鬼格 / 出场后 alpha 回落 */
+  chargeSolidReleaseMs: 280,
+  glowChargeAlpha: 0.78,
+  beamChargeAlpha: 0.88,
   ghostSize: 170,
   ghostOffsetX: 8,
   ghostOffsetY: 8,
@@ -145,6 +168,11 @@ export function viewStyleSnapshot(): string {
     `  beamPlacedOffsetY: ${v.beamPlacedOffsetY}, // 放下`,
     `  beamPlacedLengthScale: ${v.beamPlacedLengthScale},`,
     `  beamAlpha: ${v.beamAlpha},`,
+    `  chargeSolidDelayMs: ${v.chargeSolidDelayMs},`,
+    `  chargeSolidRampMs: ${v.chargeSolidRampMs},`,
+    `  chargeSolidReleaseMs: ${v.chargeSolidReleaseMs},`,
+    `  glowChargeAlpha: ${v.glowChargeAlpha},`,
+    `  beamChargeAlpha: ${v.beamChargeAlpha},`,
     `  ghostSize: ${v.ghostSize},`,
     `  ghostOffsetX: ${v.ghostOffsetX},`,
     `  ghostOffsetY: ${v.ghostOffsetY},`,

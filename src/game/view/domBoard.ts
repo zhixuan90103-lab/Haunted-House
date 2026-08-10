@@ -53,7 +53,10 @@ const PROP_SRC_TRAY: Partial<Record<PropType, string>> = {
 
 type PropViewContext = 'board' | 'tray' | 'drag' | 'drag-projection';
 
-const GHOST_SRC = './ghost.png';
+/** 透明态（已发现但不在光中）· 开心 */
+const GHOST_SRC = './ghost-revealed2.png';
+/** 完全在光中 · Revealed · 哭泣 */
+const GHOST_REVEALED_SRC = './ghost-revealed.png';
 const BOARD_BG = './board-bg.jpg';
 
 /** 入场动画时长（须与 style.css @keyframes ghost-appear 一致） */
@@ -145,7 +148,7 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   titleEl.textContent = '';
   const hintEl = document.createElement('p');
   hintEl.className = 'game-hint';
-  hintEl.textContent = '拿起手电找到全部点鬼魂。';
+  hintEl.textContent = '拿起手电找到全部的鬼魂。';
   const restartBtn = document.createElement('button');
   restartBtn.type = 'button';
   restartBtn.id = 'btn-restart';
@@ -371,10 +374,28 @@ function propImg(
   return wrap;
 }
 
+function ghostSrcForState(state: GhostState): string {
+  // 完全在光中 → 开心贴图；离开光但仍可见 → 伤心贴图
+  if (state === GhostState.Revealed || state === GhostState.Caught) {
+    return GHOST_REVEALED_SRC;
+  }
+  return GHOST_SRC;
+}
+
 function syncGhostVisualState(el: HTMLElement, g: Ghost): void {
   el.dataset.state = g.state;
   el.classList.toggle('ghost-transparent', g.state === GhostState.Transparent);
   el.classList.toggle('ghost-revealed', g.state === GhostState.Revealed);
+
+  const src = ghostSrcForState(g.state);
+  const base = el.querySelector<HTMLImageElement>('.ghost-base');
+  const litAdd = el.querySelector<HTMLImageElement>('.ghost-lit-add');
+  if (base && base.getAttribute('src') !== src) {
+    base.src = src;
+  }
+  if (litAdd && litAdd.getAttribute('src') !== src) {
+    litAdd.src = src;
+  }
 }
 
 function createGhostEl(g: Ghost): HTMLElement {
@@ -395,16 +416,17 @@ function createGhostEl(g: Ghost): HTMLElement {
     }
   });
 
+  const src = ghostSrcForState(g.state);
   const img = document.createElement('img');
   img.className = 'ghost-base';
-  img.src = GHOST_SRC;
+  img.src = src;
   img.alt = 'ghost';
   img.draggable = false;
 
   // 被光照到时：同贴图 Additive 叠一层（仅 Revealed）
   const litAdd = document.createElement('img');
   litAdd.className = 'ghost-lit-add';
-  litAdd.src = GHOST_SRC;
+  litAdd.src = src;
   litAdd.alt = '';
   litAdd.draggable = false;
   litAdd.setAttribute('aria-hidden', 'true');
@@ -434,7 +456,7 @@ function ensureGhostEl(g: Ghost): HTMLElement {
       }
       const litAdd = document.createElement('img');
       litAdd.className = 'ghost-lit-add';
-      litAdd.src = GHOST_SRC;
+      litAdd.src = ghostSrcForState(g.state);
       litAdd.alt = '';
       litAdd.draggable = false;
       litAdd.setAttribute('aria-hidden', 'true');

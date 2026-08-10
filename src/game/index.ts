@@ -46,7 +46,7 @@ import type {
 } from './types';
 import { cellKey, Dir, GhostState, SessionPhase } from './types';
 import { applyPropStyleCss } from './propStyle';
-import { applyViewStyleCss } from './viewStyle';
+import { applyViewStyleCss, VIEW_STYLE } from './viewStyle';
 import {
   applyLayoutToDom,
   buildUiShell,
@@ -339,6 +339,7 @@ function paint(
   els: DomBoardElements,
   rt: Runtime,
   lightFx: LightFxHandle,
+  freeAlphas?: { glow: number; beam: number } | null,
 ): void {
   const hidePropId =
     rt.drag?.source === 'board' ? rt.drag.propId : undefined;
@@ -355,27 +356,56 @@ function paint(
   // 滑入动画只播一帧标记即可；节点保留后动画可播完
   if (enterTypes.length) rt.trayEnterTypes = [];
 
-  // 光效层：放置发射 + 扫描/可放预览（Additive）
   lightFx.paint({
     drag: rt.drag,
     freeGlows: rt.freeGlows,
     placedLights: collectPlacedLightFx(rt.board, hidePropId),
     previewLight: rt.previewLight,
+    freeGlowAlpha: freeAlphas?.glow,
+    freeBeamAlpha: freeAlphas?.beam,
   });
+
   // 关卡标题不展示（如「绕心三折」）
   els.titleEl.textContent = '';
   els.titleEl.hidden = true;
-  // 扫鬼 / 布光阶段提示
+  // 扫鬼 / 布光阶段 · 给玩家的弱提示
   if (rt.trayUnlocked) {
-    els.hintEl.textContent =
-      '摆镜折光 · 点旋改朝向 · 全员同时显示后自动拍照';
+    els.hintEl.textContent = '设计路线，让所有鬼魂站光里。';
   } else {
-    els.hintEl.textContent = '拿起手电找到全部点鬼魂。';
+    els.hintEl.textContent = '拿起手电找到全部的鬼魂。';
   }
 }
 
 function markAllCaught(ghosts: Ghost[]): Ghost[] {
   return ghosts.map((g) => ({ ...g, state: GhostState.Caught, litSince: undefined }));
+}
+
+/** 蓄光凝实进度 0→1 的目标值（仅未发现鬼格上有 hold 时 >0） */
+function chargeSolidTargetT(
+  rt: Runtime,
+  nowMs: number,
+): number {
+  if (rt.drag?.type !== 'light') return 0;
+  const spot = rt.freeGlows[0];
+  if (!spot) return 0;
+  const cell = designToCell(spot.designX, spot.designY);
+  if (!cell) return 0;
+
+  const g = rt.ghosts.find(
+    (x) =>
+      x.x === cell.x &&
+      x.y === cell.y &&
+      !x.everLit &&
+      x.state !== GhostState.Caught &&
+      x.litSince != null,
+  );
+  if (!g || g.litSince == null) return 0;
+
+  const delay = Math.max(0, VIEW_STYLE.chargeSolidDelayMs);
+  const ramp = Math.max(1, VIEW_STYLE.chargeSolidRampMs);
+  const held = nowMs - g.litSince;
+  if (held < delay) return 0;
+  return Math.max(0, Math.min(1, (held - delay) / ramp));
 }
 
 export function mountGame(opts: MountGameOptions): GameHandle {
@@ -435,16 +465,86 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     }
   };
 
-  const repaint = () => paint(els, rt, lightFx);
+  /**
+   * 凝实进度平滑：上鬼格随 dwell 爬升；离格/出场时按 chargeSolidReleaseMs 回落。
+   */
+  let solidT = 0;
+  let solidLastMs = 0;
+  const stepSolidAlphas = (
+    nowMs: number = performance.now(),
+  ): { glow: number; beam: number } | null => {
+    const target =
+      rt.drag?.type === 'light' ? chargeSolidTargetT(rt, nowMs) : 0;
 
-  /** R21：非拖拽且全员 Revealed → Camera */
-  const maybeEnterCamera = () => {
+    if (rt.drag?.type !== 'light') {
+      solidT = 0;
+      solidLastMs = nowMs;
+      return null;
+    }
+
+    const dtMs =
+      solidLastMs > 0 ? Math.min(64, Math.max(0, nowMs - solidLastMs)) : 0;
+    solidLastMs = nowMs;
+
+    if (target >= solidT) {
+      // 跟上蓄光目标（本身已随停留时间线性爬）
+      solidT = target;
+    } else {
+      // 离格 / 出场：线性回落
+      const rel = Math.max(1, VIEW_STYLE.chargeSolidReleaseMs);
+      solidT = Math.max(0, solidT - dtMs / rel);
+      // 若 target 非 0（极少），勿低于 target
+      if (solidT < target) solidT = target;
+    }
+
+    if (solidT <= 0.001) {
+      solidT = 0;
+      return null;
+    }
+    const lerp = (a: number, b: number) => a + (b - a) * solidT;
+    return {
+      glow: lerp(VIEW_STYLE.glowAlpha, VIEW_STYLE.glowChargeAlpha),
+      beam: lerp(VIEW_STYLE.beamAlpha, VIEW_STYLE.beamChargeAlpha),
+    };
+  };
+
+  const repaint = () => paint(els, rt, lightFx, stepSolidAlphas());
+
+  /** 全员 Revealed 后等一会再弹拍照 UI（避免「刚出鬼就闪相机」） */
+  const CAMERA_ENTER_DELAY_MS = 500;
+  let cameraEnterTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearCameraEnterTimer = () => {
+    if (cameraEnterTimer != null) {
+      clearTimeout(cameraEnterTimer);
+      cameraEnterTimer = null;
+    }
+  };
+
+  const enterCameraNow = () => {
+    cameraEnterTimer = null;
     if (rt.phase !== SessionPhase.Playing) return;
     if (rt.drag) return;
     if (!allRevealed(rt.ghosts)) return;
     rt.phase = SessionPhase.Camera;
     scanHaptics.end();
     applyPhaseUi();
+  };
+
+  /** R21：非拖拽且全员 Revealed → 延迟后进 Camera */
+  const maybeEnterCamera = () => {
+    if (rt.phase !== SessionPhase.Playing) {
+      clearCameraEnterTimer();
+      return;
+    }
+    if (rt.drag || !allRevealed(rt.ghosts)) {
+      // 拖动中 / 未全显：取消排队，避免松手时用过期条件
+      clearCameraEnterTimer();
+      return;
+    }
+    // 已在排队则不重置，保证固定 0.5s（不被每帧 resolve 反复延后）
+    if (cameraEnterTimer != null) return;
+    cameraEnterTimer = setTimeout(enterCameraNow, CAMERA_ENTER_DELAY_MS);
   };
 
   /**
@@ -498,6 +598,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   afterResolve();
 
   const restart = () => {
+    clearCameraEnterTimer();
     // 本关重开：鬼全隐藏、道具回托盘、盘面清空玩家摆放、停扫描震动
     loaded = loadLevel(level001 as LevelDef);
     rt.board = loaded.board;
@@ -627,7 +728,23 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       repaint();
       afterResolve();
     },
+    onReturnToTray: (drag) => {
+      // 盘上道具拖回托盘视口松手
+      if (drag.source === 'board' && drag.fromCell) {
+        removeProp(rt.board, drag.fromCell.x, drag.fromCell.y);
+        returnToTray(rt.tray, drag.type);
+      } else if (drag.source === 'tray') {
+        returnToTray(rt.tray, drag.type);
+      }
+      rt.drag = null;
+      scanHaptics.end();
+      placementHaptics.end();
+      resolve(rt, scanHaptics);
+      repaint();
+      afterResolve();
+    },
     onCancelDrag: (drag) => {
+      // 托盘来源取消 → 回托盘；盘上来源取消 → 留在原格（拖起时未真正 remove）
       if (drag.source === 'tray') returnToTray(rt.tray, drag.type);
       rt.drag = null;
       scanHaptics.end();
@@ -654,6 +771,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   return {
     dispose: () => {
+      clearCameraEnterTimer();
       stopDwellLoop();
       scanHaptics.end();
       placementHaptics.end();

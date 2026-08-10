@@ -2,8 +2,8 @@
 
 | | |
 |--|--|
-| 版本 | **v0.5** |
-| 状态 | 冻结基线 + 拖灯 A1 + 托盘解锁/横滑 + 镜放置表现 |
+| 版本 | **v0.6** |
+| 状态 | 冻结基线 + A1 + 托盘/拖回 + Camera 吐纸结算 + 镜拖投影朝向 |
 | 依赖 | `PRODUCT.md`、`OPTICS_SPEC.md`、`adapt/design.ts` |
 | 进度索引 | `PROGRESS.md`（已落地以进度文为准） |
 
@@ -132,20 +132,31 @@ pointerdown on #tray
 ```
 Idle
   → pointerdown on tray item（过阈值）→ DragFromTray { type, facing: default }
-  → pointerdown on board prop → DragBoard { id }  (锁盘时禁用)
+  → pointerdown on board prop（!locked）→ DragBoard { id, fromCell }  (锁盘时禁用)
 Drag*
-  → pointermove → 更新 design 位；尝试 designToCell + canPlace + canCommitDrop
-  → pointerup 合法格 → place / move；重算 optics + ghosts
-  → pointerup 非法/盘外 → 回托盘或回原格
+  → pointermove → 更新 design 位；designToCell + canPlace + canCommitDrop
+  → 镜：若 cell 合法 → pickMirrorFacingForCell（两正面在盘内；仅拖动投影）
+  → pointerup 合法格且不在托盘视口 → place / move
+  → pointerup 在托盘视口（isPointInTray）→ 盘上：removeProp + returnToTray；托盘源：returnToTray
+  → pointerup 非法/盘外（非托盘）→ 托盘源回托盘；盘上源回原格（拖起未 remove）
 Idle
-  → click (无显著移动) on board prop → rotateCW facing；重算
+  → click (无显著移动) on board prop → rotateCW facing（固定 +90°，不过滤边角）；重算
 ```
+
+### 拖回托盘（v0.6）
+
+- 判定：松手 **design 坐标** ∈ `TRAY_LAYOUT`（`layout.isPointInTray`）。  
+- 盘上来源：`removeProp(fromCell)` + `returnToTray(type)`。  
+- 托盘来源未落格：仍 `returnToTray`。  
+- **锁定道具**不可拖起，故无拖回。  
+- 实现：`input.endPointer` → `onReturnToTray` / `onCancelDrag`（`index.ts`）。
 
 ### 手电落格门禁（设计）
 
 - **未全部找到**（存在 `!everLit` 的鬼）时：`light` **禁止** `canCommitDrop` → 不吸附、松手回托盘；扫描光/震动照旧。  
 - **全部 everLit 后**：才允许把手电放到空格；落格精灵锚在**格心**。  
-- 镜等：解锁进托盘后可落格（不受「先找鬼」限制）。
+- 镜等：解锁进托盘后可落格（不受「先找鬼」限制）。  
+- **实现注意**：`syncGhostFromSession` 在 pointermove / rAF **必须**传入 `canCommitDrop`，否则扫描期 light 误吸附并误触投影换格震动。
 
 ### 点击 vs 拖动阈值
 
@@ -177,7 +188,7 @@ const DRAG_THRESHOLD_PX = 8  // 设计坐标
 enum SessionPhase {
   Playing = 'playing',
   Camera = 'camera',
-  Capturing = 'capturing', // 快门后：截屏→闪白→吐纸
+  Capturing = 'capturing', // 快门后：闪白+截屏→吐纸→结算
   Won = 'won',
 }
 ```
@@ -191,20 +202,37 @@ Playing
       if !isDragging: phase = Camera
 
 Camera
-  盘面输入锁定；隐藏「重制」
-  取景 UI：camera-frame + 快门（底中）+ 返回（快门左）
-  [拍照] → phase = Capturing
+  盘面输入锁定；隐藏「重制」；隐藏 .game-hint
+  取景 UI：camera-frame.png + 快门（底中）+ 返回（左，无字）
+  进场：chrome 1.5→1 单曲线 scale≥1；控件入场结束后再 reveal
+  [拍照] → phase = Capturing → playCapture()
   [返回] → phase = Playing；不重置 everLit
   // 若返回后仍 allRevealed：下一帧 resolve 再进 Camera（正确）
 
-Capturing
-  先截棋盘区 → 闪白 → 拍立得吐出 → 全员 Caught；phase = Won
+Capturing（playCapture 时序）
+  1. is-capturing：藏 chrome；print-mask 半透蒙黑已在；flash 全白 hold
+  2. 后台截屏（captureBoard；排除 .camera-session）
+  3. 闪白淡出（默认 300ms）；蒙黑已垫底 → 无断档
+  4. 去 is-capturing + is-printing（会话层须对 is-printing 可见）
+  5. 假岛 Mask 内滑出相纸 → FLIP 飞终点（可带 finalRotateDeg）
+  6. is-won：终点相纸 +「抓到了」+「再玩一次」
   截失败：回 Camera（不写 Caught）
 
 Won
-  黑底 + 拍立得 +「再玩一次」
-  [再玩一次] → 全量 reset → Playing
+  与打印同一 print-layer（蒙黑+相纸+文案按钮）
+  [再玩一次] → restart() 全量 reset → Playing
+  再玩须 resetPolaroid / 取消 fill:forwards 动画残留
 ```
+
+### Capturing / 吐纸实现要点
+
+| 项 | 约定 |
+|----|------|
+| 闪白 | 渐入 ~200ms · 最短 hold ~320ms · 淡出 **300ms**（`prefers-reduced-motion` 更短） |
+| 蒙黑 | `rgba(0,0,0,0.72)`；Capturing 起显示在 flash 下 |
+| 可见性 | `.camera-session.is-printing` 与 camera/capturing/won **同为 opacity:1**（否则吐纸不可见） |
+| 布局 SSOT | `printLayout.ts` → CSS vars（终点位置/旋转/标题/按钮字号尺寸） |
+| 模块 | `cameraSession.ts` · `captureBoard.ts` · `printLayout.ts` · `style.css` |
 
 ### R21 拖动中全员显示
 
@@ -382,10 +410,20 @@ function restart():
 
 | 相位 | UI |
 |------|-----|
-| Playing | 托盘 + 重开 |
-| Camera | 取景框 + 快门 + 返回（无重制） |
-| Capturing | 闪白 + 吐拍立得 |
-| Won | 黑底 + 合影 +「再玩一次」 |
+| Playing | 托盘 + 重开 + **弱提示**（见下） |
+| Camera | 取景框 + 快门 + 返回（无重制；藏提示） |
+| Capturing | 闪白 + 蒙黑 + 吐拍立得 |
+| Won | 蒙黑 + 合影 +「抓到了！」+「再玩一次」 |
+
+### Playing 弱提示（`.game-hint`）
+
+| 阶段 | 条件 | 文案 |
+|------|------|------|
+| 扫描 | `!trayUnlocked`（未全 everLit） | 拿起手电找到全部的鬼魂。 |
+| 摆放 | `trayUnlocked` | 设计路线，让所有鬼魂站光里。 |
+
+- 关卡 **title 不展示**（`titleEl.hidden`）。  
+- 提示为弱引导，**不**承担规则说明全文。
 
 无失败相位；仅未过关。
 
@@ -400,4 +438,5 @@ function restart():
 | v0.3 | R12 指向 HAPTICS_SPEC（已实现）；R15 重制 UI 说明 |
 | v0.4 | R13 增 Capturing；取景 UI / 截屏吐纸 / Camera 无重制 / Won 再玩一次 |
 | v0.4 | R12 补蓄光 continuous、出场 mute 底噪 |
-| **v0.5** | R10 托盘解锁/横滑/FLIP；R11 **A1 跟手统一** + 放置 clip + 镜双图 |
+| v0.5 | R10 托盘解锁/横滑/FLIP；R11 **A1 跟手统一** + 放置 clip + 镜双图 |
+| **v0.6** | R10 拖回托盘；R13 闪白+蒙黑/吐纸可见性/结算一体；镜拖投影朝向；R24 弱提示 |

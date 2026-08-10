@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| 版本 | **v0.4** |
+| 版本 | **v0.5** |
 | 状态 | **实现以代码 `optics.MIRROR_REFLECT` 为准**；与贴图标定同步 |
 | 范围 | R01–R08 + 反查补丁（§补漏） |
 | 非范围 | 斜向光、备选道具；交互见 `INTERACTION_SPEC.md` |
@@ -177,8 +177,24 @@ else:
 ### 旋转
 
 ```
-facing = (facing + 1) % 4   // 点击旋转
+facing = (facing + 1) % 4   // 点击旋转：固定 90°，不过滤边角
 ```
+
+### 拖镜投影朝向（交互 · 非点旋）
+
+拖动**未松手**时，投影格变化可自动改 `facing`，使两个正面外侧邻格都在盘内：
+
+```
+// 正面朝外法向（与 MIRROR_REFLECT 正面一致）
+MIRROR_FRONT_OUT = {
+  0: [S, W], 1: [W, N], 2: [N, E], 3: [E, S]
+}
+pickMirrorFacingForCell(x,y,preferred): 优先 preferred，否则 CW 试 1～3
+```
+
+真源：`optics.ts` · 调用：`input.syncGhostFromSession`（仅 `type==='mirror'` 且 cell 合法）。  
+**点旋不走** `pickMirrorFacingForCell`。
+
 
 ### 手算样例
 
@@ -536,4 +552,5 @@ if playing and allGhostsRevealed:
 | v0.1 | R01–R08 冻结 |
 | v0.2 | 反查补漏；与 INTERACTION_SPEC 分工 |
 | v0.3 | R07 首次出场 dwell 1s；`litSince`；真值表更新 |
-| **v0.4** | R02 镜表与实现标定对齐（3↔4 正面；N→W/E→S @f0） |
+| v0.4 | R02 镜表与实现标定对齐（3↔4 正面；N→W/E→S @f0） |
+| **v0.5** | R02 补：拖镜投影 `pickMirrorFacingForCell` / `MIRROR_FRONT_OUT`；点旋仍 +90° |

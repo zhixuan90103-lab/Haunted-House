@@ -79,6 +79,12 @@ export function setTrayLayout(partial: Partial<TrayLayout>): void {
   Object.assign(TRAY_LAYOUT, partial);
 }
 
+/** 设计坐标是否落在托盘视口内（拖回托盘判定） */
+export function isPointInTray(dx: number, dy: number): boolean {
+  const { left, top, width, height } = TRAY_LAYOUT;
+  return dx >= left && dx < left + width && dy >= top && dy < top + height;
+}
+
 export function resetLayouts(): void {
   Object.assign(BOARD_LAYOUT, DEFAULT_BOARD_LAYOUT);
   Object.assign(TRAY_LAYOUT, DEFAULT_TRAY_LAYOUT);

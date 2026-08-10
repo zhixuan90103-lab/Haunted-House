@@ -20,8 +20,10 @@ import {
   cellToDesignCenter,
   designToCell,
   DRAG_THRESHOLD_PX,
+  isPointInTray,
   TRAY_LAYOUT,
 } from './layout';
+import { pickMirrorFacingForCell } from './optics';
 import { PROP_STYLE } from './propStyle';
 import {
   clampTrayScroll,
@@ -43,6 +45,8 @@ export type InputCallbacks = {
   onTrayPick: (type: PropType) => boolean;
   onDrop: (drag: DragGhost) => void;
   onCancelDrag: (drag: DragGhost) => void;
+  /** 盘上道具拖回托盘视口松手 */
+  onReturnToTray: (drag: DragGhost) => void;
   onRotate: (x: number, y: number) => void;
   onDragMove: () => void;
   getLayout: () => StageLayout | null;
@@ -104,6 +108,16 @@ function syncGhostFromSession(
     (canCommitDrop?.(ghost, cell.x, cell.y) ?? true)
   ) {
     ghost.cell = cell;
+    // 拖镜未松手：投影朝向自动保证进光/出光两正面在盘内（点旋不走这里）
+    if (ghost.type === 'mirror') {
+      ghost.facing = pickMirrorFacingForCell(
+        cell.x,
+        cell.y,
+        ghost.facing as DirValue,
+        board.width,
+        board.height,
+      );
+    }
   } else {
     ghost.cell = null;
   }
@@ -136,6 +150,31 @@ export function attachInput(
   let activeDrag: DragGhost | null = null;
   let session: DragSession | null = null;
   let rafId = 0;
+  /** 最近一次合法吸附（松手瞬间 frame 出界时兜底，避免底角「有影落不下」） */
+  let lastPlaceable: {
+    cell: { x: number; y: number };
+    facing: DirValue;
+  } | null = null;
+
+  const rememberPlaceable = (ghost: DragGhost) => {
+    if (ghost.cell) {
+      lastPlaceable = {
+        cell: { x: ghost.cell.x, y: ghost.cell.y },
+        facing: ghost.facing as DirValue,
+      };
+    }
+  };
+
+  const tryStickyPlaceable = (ghost: DragGhost, board: Board): boolean => {
+    if (ghost.cell || !lastPlaceable) return !!ghost.cell;
+    const { cell, facing } = lastPlaceable;
+    const ignore = ghost.source === 'board' ? ghost.propId : undefined;
+    if (!canPlace(board, cell.x, cell.y, ignore)) return false;
+    if (!(cb.canCommitDrop?.(ghost, cell.x, cell.y) ?? true)) return false;
+    ghost.cell = { x: cell.x, y: cell.y };
+    ghost.facing = facing;
+    return true;
+  };
 
   const trayMetricsNow = () => {
     const slotPx = preferredTraySlotPx();
@@ -217,6 +256,7 @@ export function attachInput(
         cb.getBoard(),
         cb.canCommitDrop,
       );
+      rememberPlaceable(activeDrag);
       cb.setDrag({ ...activeDrag });
       cb.onDragMove();
       rafId = requestAnimationFrame(loop);
@@ -232,6 +272,7 @@ export function attachInput(
     fy: number,
     fromTray: boolean,
   ) => {
+    lastPlaceable = null;
     const cell = cellSize();
     const liftPct =
       ghost.type === 'light'
@@ -256,6 +297,7 @@ export function attachInput(
       cb.getBoard(),
       cb.canCommitDrop,
     );
+    rememberPlaceable(activeDrag);
     cb.setDrag({ ...activeDrag });
     cb.onDragMove();
     startRaf();
@@ -347,6 +389,7 @@ export function attachInput(
         cb.getBoard(),
         cb.canCommitDrop,
       );
+      rememberPlaceable(activeDrag);
       cb.setDrag({ ...activeDrag });
       cb.onDragMove();
     }
@@ -357,8 +400,10 @@ export function attachInput(
     if (pointerId === null || e.pointerId !== pointerId) return;
     const layout = cb.getLayout();
     const stage = cb.getStage();
+    let releaseDesign: { x: number; y: number } | null = null;
     if (layout && session && activeDrag) {
       const d = clientToDesignLocal(e.clientX, e.clientY, stage, layout);
+      releaseDesign = d;
       samplePointer(session, d.x, d.y);
       chaseTargetOnPointer(session);
       syncGhostFromSession(
@@ -366,6 +411,16 @@ export function attachInput(
         session,
         cb.getBoard(),
         cb.canCommitDrop,
+      );
+      rememberPlaceable(activeDrag);
+      // 松手瞬间 frame 若因抬升/出界丢吸附：用最近合法格兜底
+      tryStickyPlaceable(activeDrag, cb.getBoard());
+    } else if (layout) {
+      releaseDesign = clientToDesignLocal(
+        e.clientX,
+        e.clientY,
+        stage,
+        layout,
       );
     }
 
@@ -375,8 +430,22 @@ export function attachInput(
     if (!moved && pendingBoardProp && !activeDrag) {
       cb.onRotate(pendingBoardProp.x, pendingBoardProp.y);
     } else if (activeDrag) {
-      if (activeDrag.cell) cb.onDrop(activeDrag);
-      else cb.onCancelDrag(activeDrag);
+      const overTray =
+        releaseDesign != null &&
+        isPointInTray(releaseDesign.x, releaseDesign.y);
+      // 有合法吸附格时优先落盘（底部格抬手偏下会碰到托盘区，勿抢成回托盘）
+      if (activeDrag.cell) {
+        cb.onDrop(activeDrag);
+      } else if (overTray) {
+        // 无盘格吸附 + 松在托盘 → 回托盘
+        if (activeDrag.source === 'board') {
+          cb.onReturnToTray(activeDrag);
+        } else {
+          cb.onCancelDrag(activeDrag);
+        }
+      } else {
+        cb.onCancelDrag(activeDrag);
+      }
     }
 
     if (trayScrolling) {
@@ -387,6 +456,7 @@ export function attachInput(
 
     activeDrag = null;
     session = null;
+    lastPlaceable = null;
     pendingBoardProp = null;
     pendingTray = null;
     trayPointerArmed = false;
