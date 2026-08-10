@@ -309,33 +309,33 @@ button:active {
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
 }
 
-/* 重制：可点；HUD 其余仍 pointer-events: none */
-.game-restart-btn {
-  pointer-events: auto;
+/* 扫鬼目标进度（原重制按钮位） */
+.game-goal {
   margin: 10px auto 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 32px;
   min-width: 72px;
-  padding: 6px 16px;
+  padding: 6px 18px;
   border: 1px solid rgba(226, 232, 240, 0.35);
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.72);
   color: #f8fafc;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(8px);
-  -webkit-tap-highlight-color: transparent;
+  pointer-events: none;
+  user-select: none;
 }
 
-.game-restart-btn:active {
-  transform: scale(0.96);
-  background: rgba(56, 189, 248, 0.28);
+.game-goal.is-complete {
   border-color: rgba(125, 211, 252, 0.55);
+  background: rgba(56, 189, 248, 0.22);
+  color: #e0f2fe;
 }
 
 /* Full design-stage art (390×844) — cover whole phone frame */
@@ -1849,4 +1849,11 @@ button:active {
 #ui-root.game-ui.session-locked .game-hint {
   visibility: hidden;
   opacity: 0;
+}
+
+/* DOM 截屏完成后：隐藏棋盘鬼魂（合影里已有，蒙黑下不再透出） */
+#ui-root.game-ui.ghosts-captured-hide .board-ghost-layer {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }

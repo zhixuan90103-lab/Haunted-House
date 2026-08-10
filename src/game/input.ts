@@ -482,7 +482,7 @@ export function attachInput(
     const t = e.target instanceof Element ? e.target : null;
     if (
       t?.closest?.(
-        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #island-tuner, #island-tuner-fab, #settle-tuner, #settle-tuner-fab, #btn-restart, .game-restart-btn, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab, .island-tuner, .island-tuner-fab, .settle-tuner, .settle-tuner-fab, .camera-session, .camera-btn, .won-replay-btn',
+        '#prop-tuner, #prop-tuner-fab, #haptic-tuner, #haptic-tuner-fab, #island-tuner, #island-tuner-fab, #settle-tuner, #settle-tuner-fab, #goal-progress, .game-goal, .layout-tuner, .prop-tuner, .prop-tuner-fab, .haptic-tuner, .haptic-tuner-fab, .island-tuner, .island-tuner-fab, .settle-tuner, .settle-tuner-fab, .camera-session, .camera-btn, .won-replay-btn',
       )
     )
       return;

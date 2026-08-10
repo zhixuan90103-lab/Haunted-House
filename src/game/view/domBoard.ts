@@ -105,7 +105,8 @@ export type DomBoardElements = {
   dragLayer: HTMLElement;
   titleEl: HTMLElement;
   hintEl: HTMLElement;
-  restartBtn: HTMLButtonElement;
+  /** 扫鬼目标进度，如 0/4 */
+  goalEl: HTMLElement;
 };
 
 /** Apply current BOARD/TRAY layout numbers onto shell elements. */
@@ -149,14 +150,13 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
   const hintEl = document.createElement('p');
   hintEl.className = 'game-hint';
   hintEl.textContent = '拿起手电找到全部的鬼魂。';
-  const restartBtn = document.createElement('button');
-  restartBtn.type = 'button';
-  restartBtn.id = 'btn-restart';
-  restartBtn.className = 'game-restart-btn';
-  restartBtn.textContent = '重制';
-  restartBtn.setAttribute('aria-label', '重制本关');
-  restartBtn.title = '重制本关：鬼隐藏，道具回托盘';
-  hud.append(titleEl, hintEl, restartBtn);
+  const goalEl = document.createElement('div');
+  goalEl.id = 'goal-progress';
+  goalEl.className = 'game-goal';
+  goalEl.setAttribute('aria-live', 'polite');
+  goalEl.setAttribute('aria-label', '扫描目标');
+  goalEl.textContent = '0/0';
+  hud.append(titleEl, hintEl, goalEl);
 
   const boardHit = document.createElement('div');
   boardHit.id = 'board-hit';
@@ -197,7 +197,7 @@ export function buildUiShell(uiRoot: HTMLElement): DomBoardElements {
     dragLayer,
     titleEl,
     hintEl,
-    restartBtn,
+    goalEl,
   };
   applyLayoutToDom(els);
   return els;

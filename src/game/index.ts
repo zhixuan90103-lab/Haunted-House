@@ -368,6 +368,12 @@ function paint(
   // 关卡标题不展示（如「绕心三折」）
   els.titleEl.textContent = '';
   els.titleEl.hidden = true;
+  // 扫鬼目标：everLit 数量 / 总数
+  const found = rt.ghosts.filter((g) => g.everLit).length;
+  const total = rt.ghosts.length;
+  els.goalEl.textContent = `${found}/${total}`;
+  els.goalEl.classList.toggle('is-complete', total > 0 && found >= total);
+  els.goalEl.setAttribute('aria-label', `扫描目标 ${found}/${total}`);
   // 扫鬼 / 布光阶段 · 给玩家的弱提示
   if (rt.trayUnlocked) {
     els.hintEl.textContent = '设计路线，让所有鬼魂站光里。';
@@ -442,9 +448,6 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     const pe = locked ? 'none' : 'auto';
     els.boardHit.style.pointerEvents = pe;
     els.tray.style.pointerEvents = pe;
-    // Camera：隐藏重制；Won：可用再玩一次（camera 层按钮）
-    els.restartBtn.style.display = locked ? 'none' : '';
-    els.restartBtn.style.pointerEvents = locked ? 'none' : 'auto';
     uiRoot.classList.toggle('session-locked', locked);
   };
 
@@ -599,6 +602,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   const restart = () => {
     clearCameraEnterTimer();
+    uiRoot.classList.remove('ghosts-captured-hide');
     // 本关重开：鬼全隐藏、道具回托盘、盘面清空玩家摆放、停扫描震动
     loaded = loadLevel(level001 as LevelDef);
     rt.board = loaded.board;
@@ -625,6 +629,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
 
   const onReturnFromCamera = () => {
     if (rt.phase !== SessionPhase.Camera) return;
+    uiRoot.classList.remove('ghosts-captured-hide');
     rt.phase = SessionPhase.Playing;
     applyPhaseUi();
     resolve(rt, scanHaptics);
@@ -637,14 +642,20 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     rt.phase = SessionPhase.Capturing;
     applyPhaseUi();
     try {
-      // playCapture 内部：立刻蒙黑/闪白 → 再截屏 → 吐纸（避免手机长时间无反馈）
-      await camera.playCapture(() => captureBoardDataUrl(uiRoot));
+      // playCapture：闪白 → 截屏 → 吐纸
+      await camera.playCapture(async () => {
+        const dataUrl = await captureBoardDataUrl(uiRoot);
+        // 截屏完成后立刻藏棋盘鬼魂（合影已含鬼；蒙黑下勿再透出）
+        uiRoot.classList.add('ghosts-captured-hide');
+        return dataUrl;
+      });
       rt.ghosts = markAllCaught(rt.ghosts);
       rt.phase = SessionPhase.Won;
       applyPhaseUi();
       repaint();
     } catch (err) {
       console.error('[camera] capture failed', err);
+      uiRoot.classList.remove('ghosts-captured-hide');
       // 截失败：回 Camera 可重拍，不写 Caught
       rt.phase = SessionPhase.Camera;
       applyPhaseUi();
@@ -656,14 +667,6 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   });
   camera.onReturn(onReturnFromCamera);
   camera.onReplay(restart);
-
-  els.restartBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (rt.phase !== SessionPhase.Playing) return;
-    restart();
-  });
-  els.restartBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 
   const detach = attachInput(uiRoot, {
     getBoard: () => rt.board,
