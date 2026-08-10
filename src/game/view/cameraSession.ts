@@ -18,6 +18,8 @@ export type CameraSessionHandle = {
   setSettlePreview: (on: boolean) => void;
   /** 已在结算/预览时：仅按 PRINT_LAYOUT 重钉终点布局 */
   refreshSettleLayout: () => void;
+  /** 结算主按钮文案：「下一关」/「再玩一次」 */
+  setReplayLabel: (label: string) => void;
   /**
    * 拍照仪式：先立刻闪白+蒙黑（无空白卡顿），再执行 capture() 取图，最后吐纸。
    */
@@ -241,6 +243,10 @@ export function mountCameraSession(uiRoot: HTMLElement): CameraSessionHandle {
 
   const setPolaroidImage = (dataUrl: string) => {
     polaroidImg.src = dataUrl;
+  };
+
+  const setReplayLabel = (label: string) => {
+    replayBtn.textContent = label;
   };
 
   const hideSettleUi = () => {
@@ -584,6 +590,7 @@ export function mountCameraSession(uiRoot: HTMLElement): CameraSessionHandle {
     setIslandPreview,
     setSettlePreview,
     refreshSettleLayout,
+    setReplayLabel,
     playCapture,
     setPolaroidImage,
     onShutter: (cb) => {

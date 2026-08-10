@@ -88,10 +88,10 @@ export const SCAN_HAPTIC: ScanHapticConfig = {
   peakSharpness: 0.1,
   nearRadius: 3,
 
-  chargePeakIntensity: 0.35,
-  chargePeakSharpness: 0.58,
+  chargePeakIntensity: 0.31,
+  chargePeakSharpness: 0.5,
 
-  ghostPassIntensity: 0.39,
+  ghostPassIntensity: 0.33,
   ghostPassSharpness: 0.26,
   ghostPassCooldownMs: 180,
 

@@ -1715,13 +1715,18 @@ button:active {
   border-bottom: 1px solid rgba(71, 85, 105, 0.55);
 }
 
-/* 隐藏结算 / prop / island 调参；震动调参保留 */
+/* 隐藏全部调试调参（prop / island / settle / haptic） */
 #prop-tuner-fab,
+#haptic-tuner-fab,
 #island-tuner-fab,
 .prop-tuner-fab,
+.haptic-tuner-fab,
 .island-tuner-fab,
 #prop-tuner,
+#haptic-tuner,
 #island-tuner,
+.prop-tuner,
+.haptic-tuner,
 .island-tuner,
 .settle-tuner-wrap,
 #settle-tuner-fab,
@@ -1845,8 +1850,10 @@ button:active {
   pointer-events: none;
 }
 
-/* 拍照界面：隐藏游戏内提示文字 */
-#ui-root.game-ui.session-locked .game-hint {
+/* 拍照界面：隐藏游戏内提示文字与目标进度 */
+#ui-root.game-ui.session-locked .game-hint,
+#ui-root.game-ui.session-locked .game-goal,
+#ui-root.game-ui.session-locked #goal-progress {
   visibility: hidden;
   opacity: 0;
 }

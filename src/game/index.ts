@@ -27,7 +27,11 @@ import {
   unlockTrayTypes,
   type LoadedLevel,
 } from './level';
-import level001 from './levels/level_001.json';
+import {
+  getLevelDef,
+  hasNextLevel,
+  LEVEL_CATALOG,
+} from './levels/catalog';
 import { resetTrayScroll } from './trayMetrics';
 import { designToCell } from './layout';
 import {
@@ -67,7 +71,7 @@ import {
 import { captureBoardDataUrl } from './view/captureBoard';
 import { mountCameraSession } from './view/cameraSession';
 import { applyPrintLayoutCss } from './printLayout';
-import { mountHapticTuner } from './view/hapticTuner';
+
 
 export type MountGameOptions = {
   stage: HTMLElement;
@@ -424,7 +428,9 @@ export function mountGame(opts: MountGameOptions): GameHandle {
   const camera = mountCameraSession(uiRoot);
   applyPrintLayoutCss(uiRoot);
 
-  let loaded: LoadedLevel = loadLevel(level001 as LevelDef);
+  /** 当前关卡在 LEVEL_CATALOG 中的下标 */
+  let levelIndex = 0;
+  let loaded: LoadedLevel = loadLevel(getLevelDef(levelIndex));
   const rt: Runtime = {
     board: loaded.board,
     ghosts: loaded.ghosts,
@@ -593,18 +599,17 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     else stopDwellLoop();
   };
 
-  // 结算调参已隐藏；仅挂载震动调参
-  const hapticTuner = mountHapticTuner(uiRoot);
+  // 调试调参（prop/island/settle/haptic）默认不挂载
 
   resolve(rt, scanHaptics);
   repaint();
   afterResolve();
 
-  const restart = () => {
+  const loadLevelAt = (index: number) => {
+    levelIndex = Math.max(0, Math.min(LEVEL_CATALOG.length - 1, index));
     clearCameraEnterTimer();
     uiRoot.classList.remove('ghosts-captured-hide');
-    // 本关重开：鬼全隐藏、道具回托盘、盘面清空玩家摆放、停扫描震动
-    loaded = loadLevel(level001 as LevelDef);
+    loaded = loadLevel(getLevelDef(levelIndex));
     rt.board = loaded.board;
     rt.ghosts = loaded.ghosts;
     rt.tray = loaded.tray;
@@ -625,6 +630,26 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     resolve(rt, scanHaptics);
     repaint();
     afterResolve();
+  };
+
+  /** 本关重开 */
+  const restart = () => {
+    loadLevelAt(levelIndex);
+  };
+
+  /** 结算按钮：有下一关则进下一关，否则重开本关 */
+  const onSettlePrimary = () => {
+    if (hasNextLevel(levelIndex)) {
+      loadLevelAt(levelIndex + 1);
+    } else {
+      loadLevelAt(levelIndex);
+    }
+  };
+
+  const syncReplayLabel = () => {
+    camera.setReplayLabel(
+      hasNextLevel(levelIndex) ? '下一关' : '再玩一次',
+    );
   };
 
   const onReturnFromCamera = () => {
@@ -651,6 +676,7 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       });
       rt.ghosts = markAllCaught(rt.ghosts);
       rt.phase = SessionPhase.Won;
+      syncReplayLabel();
       applyPhaseUi();
       repaint();
     } catch (err) {
@@ -666,7 +692,8 @@ export function mountGame(opts: MountGameOptions): GameHandle {
     void onShutter();
   });
   camera.onReturn(onReturnFromCamera);
-  camera.onReplay(restart);
+  camera.onReplay(onSettlePrimary);
+  syncReplayLabel();
 
   const detach = attachInput(uiRoot, {
     getBoard: () => rt.board,
@@ -781,7 +808,6 @@ export function mountGame(opts: MountGameOptions): GameHandle {
       detach();
       camera.dispose();
       ghostIdle.stop();
-      hapticTuner.dispose();
       lightFx.dispose();
       uiRoot.replaceChildren();
       uiRoot.classList.remove('game-ui', 'session-locked');

@@ -1,0 +1,21 @@
+{
+  "id": "level_003",
+  "title": "右列汇流",
+  "intent": "布局同第一关：中心墙 (2,2)；五鬼 (0,1)(1,3)(3,4)(4,4)(2,4)。1 灯 3 镜。",
+  "board": { "width": 5, "height": 5 },
+  "walls": [
+    { "x": 2, "y": 2 }
+  ],
+  "ghosts": [
+    { "id": "g1", "x": 0, "y": 1 },
+    { "id": "g2", "x": 1, "y": 3 },
+    { "id": "g3", "x": 3, "y": 4 },
+    { "id": "g4", "x": 4, "y": 4 },
+    { "id": "g5", "x": 2, "y": 4 }
+  ],
+  "tray": [
+    { "type": "light", "count": 1 },
+    { "type": "mirror", "count": 3 }
+  ],
+  "reference": "Same board frame as level_001 (one wall at 2,2). Ghosts (0,1)(1,3)(3,4)(4,4)(2,4)."
+}
